@@ -14,6 +14,7 @@ import httpx
 from .. import prompts
 from ..config import EngineConfig
 from ..html_tools import count_cjk, repair_untagged_output, strip_text, tag_names
+from ..languages import base as base_lang
 from ..schemas import HtmlContext
 from .base import (
     Engine,
@@ -27,8 +28,8 @@ from .base import (
 # A 429 asking for a short pause is throttling; a long one is quota.
 _THROTTLE_CUTOFF_SECONDS = 60
 
-# Target languages where CJK characters in the output are expected.
-_CJK_TARGETS = {"zh", "zh-cn", "zh-tw", "zh-hans", "zh-hant", "ja", "ko"}
+# Target languages (ISO 639-1 base) where CJK output characters are expected.
+_CJK_TARGETS = {"zh", "ja", "ko"}
 
 _TIMEOUT = httpx.Timeout(connect=15.0, read=900.0, write=60.0, pool=60.0)
 
@@ -143,7 +144,7 @@ class OpenAICompatEngine(Engine):
         # Small models sometimes code-switch mid-word ("re凝聚"). When any
         # CJK survives in non-CJK output, regenerate once (slightly hotter
         # for diversity) and keep the attempt that leaks least.
-        check_leak = target_lang.lower() not in _CJK_TARGETS
+        check_leak = base_lang(target_lang) not in _CJK_TARGETS
         best: tuple[int, str, dict[str, str]] | None = None
         for temperature in (0.3, 0.6):
             raw = await self._chat(messages, temperature=temperature)

@@ -102,6 +102,18 @@ serves whatever model it loaded regardless of the `model` value sent.
 - `/health` is always unauthenticated (container health checks use it).
 - Don't expose port 8000 publicly without a reverse proxy + TLS.
 
+## Operations
+
+- `LOG_LEVEL` (default `INFO`) controls application log verbosity, e.g.
+  `LOG_LEVEL=DEBUG` or `LOG_LEVEL=WARNING`.
+- `source_lang` / `target_lang` are BCP 47 tags: an ISO 639-1 code plus an
+  optional script/region subtag, case-insensitive (`zh`, `zh-TW`, `zh-Hant`,
+  `pt-BR`). Region aliases collapse to scripts (`zh-TW` → `zh-Hant`); invalid
+  tags are rejected with `422`.
+- Request payloads are capped: 10 MB per request body (`413`), 1,000,000
+  characters of HTML per chapter, 10,000 characters per text item, 5,000 per
+  context field (`422`).
+
 ## Sanity checks
 
 ```bash

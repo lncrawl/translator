@@ -9,11 +9,17 @@ services:
     volumes:
       - ./config.yml:/app/config.yml:ro
     environment:
-      # Pass through whichever engine keys you have set on the host.
+      # Pass through whichever engine keys you have set on the host
+      # (every api_key_env referenced in config.example.yml).
       - ZAI_API_KEY
       - GEMINI_API_KEY
+      - CEREBRAS_API_KEY
+      - MISTRAL_API_KEY
+      - GROQ_API_KEY
+      - OPENROUTER_API_KEY
       - DEEPL_API_KEY
       - AUTH_TOKEN
+      - LOG_LEVEL
     restart: unless-stopped
 
   # Optional local-model lane: start with `docker compose --profile local up`.

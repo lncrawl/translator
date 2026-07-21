@@ -92,7 +92,7 @@ async def translate_html_via_segments(
 ) -> HtmlResult:
     """Fallback pipeline for engines that cannot handle markup themselves:
     extract text nodes, translate them as segments, reinject in place."""
-    from .engines.base import HtmlResult
+    from .engines.base import EngineError, ErrorKind, HtmlResult
 
     soup, nodes = extract_segments(html)
     if not nodes:
@@ -104,6 +104,12 @@ async def translate_html_via_segments(
         glossary=glossary,
         context=context,
     )
+    if len(translated) != len(nodes):
+        raise EngineError(
+            f"{engine.id}: returned {len(translated)} segments for {len(nodes)}"
+            " text nodes",
+            ErrorKind.TRANSIENT,
+        )
     for node, text in zip(nodes, translated, strict=True):
         node.replace_with(text)
     return HtmlResult(

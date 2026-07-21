@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from ..config import EngineConfig
+from ..languages import deepl_source_lang, deepl_target_lang
 from ..schemas import HtmlContext
 from .base import (
     Engine,
@@ -29,9 +30,6 @@ _FREE_BASE_URL = "https://api-free.deepl.com"
 _PRO_BASE_URL = "https://api.deepl.com"
 
 _TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=60.0, pool=60.0)
-
-_SOURCE_LANG = {"zh": "ZH", "ja": "JA", "ko": "KO", "en": "EN"}
-_TARGET_LANG = {"en": "EN-US", "pt": "PT-BR", "zh": "ZH-HANS"}
 
 
 def _seconds_until_next_month() -> int:
@@ -74,10 +72,10 @@ class DeepLEngine(Engine):
     ) -> list[str]:
         payload: dict[str, Any] = {
             "text": texts,
-            "target_lang": _TARGET_LANG.get(target_lang, target_lang.upper()),
+            "target_lang": deepl_target_lang(target_lang),
         }
         if source_lang:
-            payload["source_lang"] = _SOURCE_LANG.get(source_lang, source_lang.upper())
+            payload["source_lang"] = deepl_source_lang(source_lang)
         if html:
             payload["tag_handling"] = "html"
         try:
@@ -88,11 +86,17 @@ class DeepLEngine(Engine):
             raise self._classify_http_error(response)
         try:
             translations = response.json()["translations"]
-            return [str(t["text"]) for t in translations]
+            results = [str(t["text"]) for t in translations]
         except (KeyError, TypeError, ValueError) as exc:
             raise EngineError(
                 f"{self.id}: malformed translate response", ErrorKind.TRANSIENT
             ) from exc
+        if len(results) != len(texts):
+            raise EngineError(
+                f"{self.id}: expected {len(texts)} translations, got {len(results)}",
+                ErrorKind.TRANSIENT,
+            )
+        return results
 
     def _classify_http_error(self, response: httpx.Response) -> EngineError:
         status = response.status_code

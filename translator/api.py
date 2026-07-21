@@ -37,8 +37,10 @@ def require_auth(
     token = os.environ.get(AUTH_TOKEN_ENV)
     if not token:
         return
-    expected = f"Bearer {token}"
-    if not authorization or not secrets.compare_digest(authorization, expected):
+    # Compare as bytes: compare_digest raises TypeError on non-ASCII str.
+    expected = f"Bearer {token}".encode()
+    provided = (authorization or "").encode("utf-8", errors="replace")
+    if not secrets.compare_digest(provided, expected):
         raise ApiError(401, "unauthorized", "missing or invalid bearer token")
 
 
