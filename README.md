@@ -37,9 +37,10 @@ for the engine research.
 
 ```bash
 uv sync
-uv run pytest
-uv run ruff check . && uv run mypy
-uv run fastapi dev translator/main.py
+uv run poe check      # ruff + mypy + pytest
+uv run poe dev        # dev server with auto-reload
+uv run poe start      # production-style server (uvicorn on :8000)
+uv run poe live-test  # smoke-test real engines from config.yml (opt-in)
 ```
 
 See [AGENTS.md](AGENTS.md) for project decisions and conventions.

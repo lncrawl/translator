@@ -8,6 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request
 
+from . import __version__
 from .config import AppConfig
 from .detect import detect_language
 from .engines import EngineStatus, capabilities_for
@@ -53,6 +54,11 @@ def _router(request: Request) -> Router:
 
 health_router = APIRouter()
 router = APIRouter(dependencies=[Depends(require_auth)])
+
+
+@health_router.get("/")
+def root() -> dict[str, str]:
+    return {"service": "translator", "version": __version__, "docs": "/docs"}
 
 
 @health_router.get("/health")

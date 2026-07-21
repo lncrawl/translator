@@ -19,12 +19,25 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+  "httpx2>=2.7.0",
   "mypy>=1.11",
+  "poethepoet>=0.30",
   "pytest>=8.0",
   "pytest-asyncio>=0.24",
   "ruff>=0.6",
   "types-pyyaml",
 ]
+
+[tool.poe.tasks]
+lint = [{ cmd = "ruff check . --fix" }, { cmd = "ruff format ." }]
+typecheck = "mypy"
+test = "pytest -q"
+check = ["lint", "typecheck", "test"]
+dev = "fastapi dev translator/main.py"
+start = "uvicorn translator.main:app --host 0.0.0.0 --port 8000"
+docker = "docker compose up -d --build"
+# Exercises every enabled engine in config.yml with two tiny real calls.
+live-test = { cmd = "pytest tests/test_live.py -s", env = { LIVE_ENGINE_TEST = "1" } }
 
 [tool.hatch.build.targets.wheel]
 packages = ["translator"]

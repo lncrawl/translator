@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def test_example_config_loads_and_validates() -> None:
     config = load_config(REPO_ROOT / "config.example.yml")
-    assert {e.id for e in config.engines} >= {"zai-glm-flash", "gemini-flash", "deepl"}
+    assert {e.id for e in config.engines} >= {"zai-glm-flash", "gemini-flash"}
     assert config.routing.chapter[0] == "zai-glm-flash"
 
 

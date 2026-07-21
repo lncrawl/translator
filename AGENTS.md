@@ -39,6 +39,27 @@ bar). English → other languages must work but quality is best-effort.
    demands more, the owner may upgrade hardware as a last resort — keep
    options open.
 
+## Repo layout
+
+- `translator/` — the FastAPI app: `api.py` (routes), `router.py` (lane
+  routing, rate limiting, fallback), `engines/` (OpenAI-compat + DeepL),
+  `prompts.py` (LLM prompts/parsing), `html_tools.py` (chunking, segment
+  pipeline, tag validation), `detect.py` (language detection), `config.py`.
+- `tests/` — pytest suite; `helpers.py` has `FakeEngine`; realistic chapter
+  fixtures in `tests/fixtures/{zh,ja,ko}.html`.
+- `docs/` — engine research, service design, deployment guide.
+- `config.example.yml` — all known free engine lanes, ready to uncomment.
+
+## Commands
+
+Tasks are defined with poethepoet in `pyproject.toml` (`uv run poe <task>`):
+
+- `uv run poe check` — ruff + mypy + pytest; run before declaring work done.
+- `uv run poe dev` — dev server (auto-reload); `uv run poe start` —
+  production-style uvicorn; `uv run poe docker` — build & start compose.
+- `uv run poe live-test` — opt-in real-engine smoke test (needs `config.yml`
+  with at least one key env set; costs a trivial amount of quota).
+
 ## Conventions
 
 - Python ≥ 3.12, managed with **uv** (`uv sync`, `uv run …`).
