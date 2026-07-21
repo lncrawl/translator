@@ -1,5 +1,8 @@
 services:
   translator:
+    # Published on every push to main.
+    # For local build run `docker compose up -d --build`
+    image: ghcr.io/lncrawl/translator:latest
     build: .
     ports:
       - "8000:8000"

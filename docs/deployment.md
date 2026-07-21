@@ -10,9 +10,14 @@ cp config.example.yml config.yml     # pick your engine lanes
 export ZAI_API_KEY=...               # whichever keys your config references
 export AUTH_TOKEN=...                # optional; omit on a private network
 
-docker compose up -d --build
+docker compose up -d                 # pulls ghcr.io/lncrawl/translator:latest
 curl http://localhost:8000/health
 ```
+
+Prebuilt images (amd64 + arm64) are published to
+`ghcr.io/lncrawl/translator` on every push to main (`latest`, `sha-…`) and
+on version tags (`1.2`, `1.2.3`). Use `docker compose up -d --build` to
+build from source instead.
 
 The config file is mounted read-only; editing it only needs a container
 restart, never a rebuild:

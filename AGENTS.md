@@ -59,6 +59,10 @@ Tasks are defined with poethepoet in `pyproject.toml` (`uv run poe <task>`):
   production-style uvicorn; `uv run poe docker` — build & start compose.
 - `uv run poe live-test` — opt-in real-engine smoke test (needs `config.yml`
   with at least one key env set; costs a trivial amount of quota).
+- CI (`.github/workflows/ci.yml`) runs `lint-check` (no auto-fix),
+  `typecheck`, `test`, and a Docker build on pushes to main and PRs.
+- Publish (`.github/workflows/publish.yml`) pushes multi-arch images to
+  `ghcr.io/lncrawl/translator` on main pushes and `v*` tags.
 
 ## Conventions
 

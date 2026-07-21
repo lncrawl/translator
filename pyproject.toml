@@ -30,6 +30,7 @@ dev = [
 
 [tool.poe.tasks]
 lint = [{ cmd = "ruff check . --fix" }, { cmd = "ruff format ." }]
+lint-check = [{ cmd = "ruff check ." }, { cmd = "ruff format --check ." }]
 typecheck = "mypy"
 test = "pytest -q"
 check = ["lint", "typecheck", "test"]
