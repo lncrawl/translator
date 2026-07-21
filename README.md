@@ -29,6 +29,8 @@ for the engine research.
 
 ## API
 
+- `GET /` — browser demo & config UI: try translations, watch engine
+  status, and manage the runtime config without leaving the page
 - `GET /health` — liveness/readiness
 - `GET /engines` — configured engines with live status (quota, cooldowns)
 - `POST /detect` — local language detection (no engine quota)

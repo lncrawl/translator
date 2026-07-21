@@ -40,10 +40,19 @@ def boot_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     return TestClient(create_app(BOOT_CONFIG))
 
 
+def test_root_serves_demo_page(boot_client: TestClient) -> None:
+    resp = boot_client.get("/")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    assert "<title>translator" in resp.text
+
+
 def test_health_reports_enabled_engines(boot_client: TestClient) -> None:
     body = boot_client.get("/health").json()
     # "llm" lacks its key env, "local" needs none.
-    assert body == {"status": "ok", "engines_enabled": ["local"]}
+    assert body["status"] == "ok"
+    assert body["engines_enabled"] == ["local"]
+    assert body["version"]
 
 
 def test_engines_listing_reflects_boot_time_keys(

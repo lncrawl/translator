@@ -1,0 +1,1229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>translator — demo &amp; config</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #d9dee5;
+    --text: #1d2430;
+    --muted: #66707e;
+    --accent: #4f5fd5;
+    --accent-text: #ffffff;
+    --ok: #2e8b57;
+    --warn: #b07a1e;
+    --bad: #c0392b;
+    --code-bg: #eef0f4;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --panel: #1d2128;
+      --border: #333a45;
+      --text: #e5e9ef;
+      --muted: #98a2b0;
+      --accent: #7b8bf0;
+      --accent-text: #10131a;
+      --ok: #57bd84;
+      --warn: #d9a23e;
+      --bad: #e06a5a;
+      --code-bg: #262c35;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 10px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { font-size: 18px; font-weight: 700; }
+  .brand small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; border: 1px solid var(--border);
+  }
+  .badge.ok { color: var(--ok); border-color: var(--ok); }
+  .badge.warn { color: var(--warn); border-color: var(--warn); }
+  .badge.bad { color: var(--bad); border-color: var(--bad); }
+  nav.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav.tabs button {
+    border: none; background: transparent; color: var(--muted);
+    padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    font: inherit; font-weight: 600;
+  }
+  nav.tabs button:hover { background: var(--code-bg); }
+  nav.tabs button.active { background: var(--accent); color: var(--accent-text); }
+  .header-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .header-actions a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+  main { max-width: 1150px; margin: 0 auto; padding: 20px; }
+  section.tab { display: none; }
+  section.tab.active { display: block; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 16px;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 17px; }
+  .card h3 { margin: 16px 0 8px; font-size: 14px; text-transform: uppercase;
+             letter-spacing: .04em; color: var(--muted); }
+  .hint { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
+
+  .grid { display: grid; gap: 14px; }
+  .grid.two { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 860px) { .grid.two { grid-template-columns: 1fr; } }
+
+  label.field { display: block; font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  label.field > span { display: block; margin-bottom: 3px; color: var(--muted); }
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit;
+  }
+  textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+             font-size: 13px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+  .row > label.field { flex: 1; min-width: 130px; margin-bottom: 0; }
+
+  button.primary, button.ghost, button.danger, button.small {
+    font: inherit; font-weight: 600; border-radius: 8px; cursor: pointer;
+    padding: 8px 16px; border: 1px solid transparent;
+  }
+  button.primary { background: var(--accent); color: var(--accent-text); }
+  button.ghost { background: transparent; color: var(--accent); border-color: var(--border); }
+  button.danger { background: transparent; color: var(--bad); border-color: var(--border); }
+  button.small { padding: 3px 9px; font-size: 12px; }
+  button:disabled { opacity: .55; cursor: wait; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border);
+           vertical-align: top; }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  pre {
+    background: var(--code-bg); border-radius: 8px; padding: 10px 12px;
+    overflow-x: auto; font-size: 13px; margin: 8px 0;
+  }
+  .meta { color: var(--muted); font-size: 13px; margin: 8px 0; }
+  .meta b { color: var(--text); }
+
+  .glossary-rows .row { margin-bottom: 6px; align-items: center; }
+  .glossary-rows input { flex: 1; }
+
+  .bar { height: 8px; border-radius: 4px; background: var(--code-bg);
+         overflow: hidden; min-width: 120px; }
+  .bar > div { height: 100%; background: var(--accent); }
+
+  .preview-frame {
+    width: 100%; min-height: 300px; border: 1px solid var(--border);
+    border-radius: 8px; background: #fff;
+  }
+  .result-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 860px) { .result-pair { grid-template-columns: 1fr; } }
+
+  .lane { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .lane ol { margin: 6px 0; padding-left: 24px; }
+  .lane li { margin: 4px 0; }
+  .lane li .small { margin-left: 4px; }
+
+  .status-ok { color: var(--ok); font-weight: 600; }
+  .status-throttled, .status-warn { color: var(--warn); font-weight: 600; }
+  .status-quota_exhausted, .status-error { color: var(--bad); font-weight: 600; }
+  .status-disabled { color: var(--muted); font-weight: 600; }
+
+  dialog {
+    border: 1px solid var(--border); border-radius: 12px; padding: 20px;
+    background: var(--panel); color: var(--text); max-width: 480px; width: 92vw;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h2 { margin-top: 0; }
+
+  #toast {
+    position: fixed; right: 18px; bottom: 18px; z-index: 100;
+    display: flex; flex-direction: column; gap: 8px; max-width: 420px;
+  }
+  .toast {
+    padding: 10px 14px; border-radius: 10px; font-size: 14px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-left: 4px solid var(--accent); box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  }
+  .toast.error { border-left-color: var(--bad); }
+  .toast.success { border-left-color: var(--ok); }
+
+  .inline-note {
+    padding: 10px 14px; border: 1px dashed var(--border); border-radius: 10px;
+    color: var(--muted); font-size: 14px;
+  }
+  .spin { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">translator<small id="version"></small></div>
+  <span id="health-badge" class="badge">…</span>
+  <nav class="tabs" id="tabs">
+    <button data-tab="text" class="active">Translate text</button>
+    <button data-tab="html">Translate chapter</button>
+    <button data-tab="detect">Detect language</button>
+    <button data-tab="engines">Engines</button>
+    <button data-tab="config">Configuration</button>
+  </nav>
+  <div class="header-actions">
+    <a href="/docs" target="_blank" rel="noopener">API docs</a>
+    <button class="ghost" id="btn-tokens">Tokens</button>
+  </div>
+</header>
+
+<main>
+
+<!-- ============================ Translate text ========================== -->
+<section class="tab active" id="tab-text">
+  <div class="card">
+    <h2>Short-text translation</h2>
+    <p class="hint">Batches titles, tags, author names, synopsis lines — one item
+      per line, up to 500 per request (<code>POST /translate/text</code>).</p>
+    <div class="grid two">
+      <div>
+        <label class="field"><span>Texts (one per line)</span>
+          <textarea id="text-input" rows="8" placeholder="斗破苍穹&#10;天蚕土豆"></textarea>
+        </label>
+        <button class="ghost small" id="text-sample">Load sample</button>
+      </div>
+      <div>
+        <div class="row">
+          <label class="field"><span>Source language</span>
+            <input type="text" id="text-source" list="langs" placeholder="auto-detect">
+          </label>
+          <label class="field"><span>Target language</span>
+            <input type="text" id="text-target" list="langs" value="en">
+          </label>
+          <label class="field"><span>Engine</span>
+            <select id="text-engine"><option value="">auto (routing)</option></select>
+          </label>
+        </div>
+        <label class="field" style="margin-top:10px"><span>Context (optional)</span>
+          <textarea id="text-context" rows="2"
+            placeholder="e.g. items from a xianxia novel about cultivation"></textarea>
+        </label>
+        <h3>Glossary</h3>
+        <div id="text-glossary"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="text-go">Translate</button>
+      <span class="meta" id="text-meta"></span>
+    </div>
+    <div id="text-results"></div>
+  </div>
+</section>
+
+<!-- ============================ Translate chapter ======================= -->
+<section class="tab" id="tab-html">
+  <div class="card">
+    <h2>Chapter (HTML) translation</h2>
+    <p class="hint">One chapter per call; markup is preserved and only human-readable
+      text is translated. New glossary terms come back for reuse on the next
+      chapter (<code>POST /translate/html</code>).</p>
+    <div class="actions" style="margin:0 0 10px">
+      <span class="meta">Samples:</span>
+      <button class="ghost small" data-sample="zh">Chinese</button>
+      <button class="ghost small" data-sample="ja">Japanese</button>
+      <button class="ghost small" data-sample="ko">Korean</button>
+    </div>
+    <div class="grid two">
+      <div>
+        <label class="field"><span>Chapter HTML</span>
+          <textarea id="html-input" rows="14" placeholder="&lt;h1&gt;第一章&lt;/h1&gt;&#10;&lt;p&gt;…&lt;/p&gt;"></textarea>
+        </label>
+      </div>
+      <div>
+        <div class="row">
+          <label class="field"><span>Source language</span>
+            <input type="text" id="html-source" list="langs" placeholder="auto-detect">
+          </label>
+          <label class="field"><span>Target language</span>
+            <input type="text" id="html-target" list="langs" value="en">
+          </label>
+          <label class="field"><span>Engine</span>
+            <select id="html-engine"><option value="">auto (routing)</option></select>
+          </label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <label class="field"><span>Novel title</span>
+            <input type="text" id="html-ctx-title"></label>
+          <label class="field"><span>Chapter title</span>
+            <input type="text" id="html-ctx-chapter"></label>
+        </div>
+        <label class="field" style="margin-top:10px"><span>Synopsis (context)</span>
+          <textarea id="html-ctx-synopsis" rows="2"></textarea>
+        </label>
+        <label class="field"><span>
+          <input type="checkbox" id="html-extract" checked style="width:auto;margin-right:6px">
+          Extract new glossary terms</span>
+        </label>
+        <h3>Glossary</h3>
+        <div id="html-glossary"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="html-go">Translate chapter</button>
+      <span class="meta" id="html-meta"></span>
+    </div>
+    <div id="html-warnings"></div>
+    <div id="html-newterms"></div>
+    <div id="html-results" style="display:none">
+      <div class="actions" style="margin-bottom:8px">
+        <button class="ghost small" id="html-view-rendered">Rendered</button>
+        <button class="ghost small" id="html-view-raw">Raw HTML</button>
+      </div>
+      <div class="result-pair" id="html-rendered">
+        <div><h3>Source</h3><iframe class="preview-frame" id="frame-source" sandbox=""></iframe></div>
+        <div><h3>Translation</h3><iframe class="preview-frame" id="frame-target" sandbox=""></iframe></div>
+      </div>
+      <div id="html-raw" style="display:none"><h3>Translated HTML</h3><pre id="html-raw-pre"></pre></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ Detect ================================== -->
+<section class="tab" id="tab-detect">
+  <div class="card">
+    <h2>Language detection</h2>
+    <p class="hint">Local detection — costs no engine quota, one line per text
+      (<code>POST /detect</code>).</p>
+    <label class="field"><span>Texts (one per line)</span>
+      <textarea id="detect-input" rows="6" placeholder="안녕하세요&#10;你好，世界&#10;こんにちは"></textarea>
+    </label>
+    <div class="actions">
+      <button class="primary" id="detect-go">Detect</button>
+      <button class="ghost" id="detect-sample">Load sample</button>
+    </div>
+    <div id="detect-results"></div>
+  </div>
+</section>
+
+<!-- ============================ Engines ================================= -->
+<section class="tab" id="tab-engines">
+  <div class="card">
+    <h2>Engines</h2>
+    <p class="hint">Live status of every configured engine: routing eligibility,
+      rate-limit cooldowns, and quota state (<code>GET /engines</code>). The
+      enable switch is a config write and needs the admin token.</p>
+    <div class="actions" style="margin:0 0 10px">
+      <button class="ghost" id="engines-refresh">Refresh</button>
+      <span class="meta" id="engines-meta"></span>
+    </div>
+    <div id="engines-table"></div>
+  </div>
+</section>
+
+<!-- ============================ Config ================================== -->
+<section class="tab" id="tab-config">
+  <div class="card">
+    <h2>Configuration</h2>
+    <p class="hint">The live runtime config (<code>GET /config</code>). Writes
+      apply atomically, persist to <code>config.yml</code>, and need the admin
+      token. Secrets never appear here — providers reference API keys by env
+      var name only.</p>
+    <div class="actions" style="margin:0">
+      <button class="ghost" id="config-refresh">Reload</button>
+      <span class="meta" id="config-meta"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Providers</h2>
+    <p class="hint">An API account: base URL, credential env var, and account-wide
+      rate limits shared by all of its engines.</p>
+    <div id="providers-table"></div>
+    <div class="actions"><button class="ghost" id="provider-add">Add provider</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Engines</h2>
+    <p class="hint">One model on one provider — what the routing lanes reference.</p>
+    <div id="config-engines-table"></div>
+    <div class="actions"><button class="ghost" id="engine-add">Add engine</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Routing lanes</h2>
+    <p class="hint">Priority order per request type; the router walks the lane and
+      uses the first engine that is enabled, keyed, and not cooling down.</p>
+    <div class="grid two">
+      <div class="lane" id="lane-chapter"></div>
+      <div class="lane" id="lane-short_text"></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="routing-save">Save routing</button>
+      <button class="ghost" id="routing-reset">Discard changes</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Failure policy</h2>
+    <p class="hint">Retry, fallback, and cooldown behavior of the router.</p>
+    <div class="row">
+      <label class="field"><span>Transient retries</span>
+        <input type="number" id="fp-retries" min="0" step="1"></label>
+      <label class="field"><span>Backoff base (s)</span>
+        <input type="number" id="fp-backoff" min="0" step="0.5"></label>
+      <label class="field"><span>Failure threshold</span>
+        <input type="number" id="fp-threshold" min="1" step="1"></label>
+      <label class="field"><span>Cooldown (s)</span>
+        <input type="number" id="fp-cooldown" min="1" step="10"></label>
+    </div>
+    <div class="actions"><button class="primary" id="fp-save">Save failure policy</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Raw config</h2>
+    <p class="hint">The full config as JSON. Apply replaces the whole config after
+      server-side validation (<code>PUT /config</code>).</p>
+    <textarea id="config-json" rows="16" spellcheck="false"></textarea>
+    <div class="actions">
+      <button class="primary" id="config-apply">Apply full config</button>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<datalist id="langs">
+  <option value="zh"><option value="zh-Hant"><option value="ja"><option value="ko">
+  <option value="en"><option value="es"><option value="fr"><option value="de">
+  <option value="ru"><option value="pt-BR"><option value="id"><option value="vi">
+  <option value="th"><option value="tr"><option value="ar"><option value="bn">
+</datalist>
+
+<!-- Token settings -->
+<dialog id="token-dialog">
+  <h2>Access tokens</h2>
+  <p class="hint">Stored only in this browser (localStorage). The API token is
+    needed when the server sets <code>AUTH_TOKEN</code>; config writes need
+    <code>ADMIN_TOKEN</code> (the API token is used as fallback).</p>
+  <label class="field"><span>API token (AUTH_TOKEN)</span>
+    <input type="password" id="token-api" autocomplete="off"></label>
+  <label class="field"><span>Admin token (ADMIN_TOKEN)</span>
+    <input type="password" id="token-admin" autocomplete="off"></label>
+  <div class="actions">
+    <button class="primary" id="token-save">Save</button>
+    <button class="ghost" id="token-cancel">Cancel</button>
+  </div>
+</dialog>
+
+<!-- Provider editor -->
+<dialog id="provider-dialog">
+  <h2 id="provider-dialog-title">Provider</h2>
+  <label class="field"><span>Id</span><input type="text" id="pv-id"></label>
+  <div class="row">
+    <label class="field"><span>Kind</span>
+      <select id="pv-kind"><option value="openai">openai</option><option value="deepl">deepl</option></select>
+    </label>
+    <label class="field"><span>API key env var</span>
+      <input type="text" id="pv-keyenv" placeholder="MY_API_KEY"></label>
+  </div>
+  <label class="field" style="margin-top:10px"><span>Base URL (openai kind)</span>
+    <input type="text" id="pv-baseurl" placeholder="https://api.example.com/v1"></label>
+  <div class="row" style="margin-top:10px">
+    <label class="field"><span>Req/s</span>
+      <input type="number" id="pv-rps" min="0" step="0.1"></label>
+    <label class="field"><span>Req/min</span>
+      <input type="number" id="pv-rpm" min="0" step="1"></label>
+    <label class="field"><span>Max concurrency</span>
+      <input type="number" id="pv-conc" min="1" step="1"></label>
+    <label class="field"><span>Monthly chars</span>
+      <input type="number" id="pv-monthly" min="0" step="1000"></label>
+  </div>
+  <div class="actions">
+    <button class="primary" id="pv-save">Save</button>
+    <button class="ghost" id="pv-cancel">Cancel</button>
+  </div>
+</dialog>
+
+<!-- Engine editor -->
+<dialog id="engine-dialog">
+  <h2 id="engine-dialog-title">Engine</h2>
+  <div class="row">
+    <label class="field"><span>Id</span><input type="text" id="en-id"></label>
+    <label class="field"><span>Provider</span><select id="en-provider"></select></label>
+  </div>
+  <label class="field" style="margin-top:10px"><span>Model</span>
+    <input type="text" id="en-model" placeholder="glm-4.7-flash"></label>
+  <div class="row" style="margin-top:10px">
+    <label class="field"><span>Max input tokens</span>
+      <input type="number" id="en-maxtokens" min="0" step="1000"></label>
+    <label class="field"><span>Chunk tokens</span>
+      <input type="number" id="en-chunktokens" min="0" step="100"></label>
+  </div>
+  <label class="field" style="margin-top:10px"><span>
+    <input type="checkbox" id="en-enabled" checked style="width:auto;margin-right:6px">Enabled</span>
+  </label>
+  <label class="field"><span>Extra request body (JSON)</span>
+    <textarea id="en-extra" rows="3" placeholder='{"chat_template_kwargs": {"enable_thinking": false}}'></textarea>
+  </label>
+  <div class="actions">
+    <button class="primary" id="en-save">Save</button>
+    <button class="ghost" id="en-cancel">Cancel</button>
+  </div>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+/* ---------------------------------------------------------------- helpers */
+
+const $ = (sel) => document.querySelector(sel);
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key === "class") node.className = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else if (value !== undefined && value !== null) node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined) continue;
+    node.append(child.nodeType ? child : document.createTextNode(child));
+  }
+  return node;
+}
+
+function toast(message, kind = "success") {
+  const node = el("div", { class: `toast ${kind}` }, message);
+  $("#toast").append(node);
+  setTimeout(() => node.remove(), kind === "error" ? 7000 : 3500);
+}
+
+const store = {
+  get apiToken() { return localStorage.getItem("translator.apiToken") || ""; },
+  set apiToken(v) { localStorage.setItem("translator.apiToken", v); },
+  get adminToken() { return localStorage.getItem("translator.adminToken") || ""; },
+  set adminToken(v) { localStorage.setItem("translator.adminToken", v); },
+};
+
+async function api(path, { method = "GET", body, admin = false } = {}) {
+  const token = admin ? (store.adminToken || store.apiToken) : store.apiToken;
+  const headers = {};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (token) headers["Authorization"] = "Bearer " + token;
+  let res;
+  try {
+    res = await fetch(path, {
+      method, headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (err) {
+    throw Object.assign(new Error("service unreachable"), { code: "network" });
+  }
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const detail = (data && data.error) || {};
+    const message = detail.message || `HTTP ${res.status}`;
+    throw Object.assign(new Error(message), {
+      code: detail.code || `http_${res.status}`,
+      status: res.status,
+      retryAfter: detail.retry_after_seconds,
+    });
+  }
+  return data;
+}
+
+function reportError(err) {
+  let message = `${err.code || "error"}: ${err.message}`;
+  if (err.retryAfter) message += ` (retry in ${err.retryAfter}s)`;
+  if (err.status === 401) message += " — set your token via the Tokens button";
+  if (err.status === 403 && err.code === "config_writes_disabled")
+    message += " — the server has no ADMIN_TOKEN/AUTH_TOKEN set";
+  toast(message, "error");
+}
+
+async function busy(button, fn) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.innerHTML = '<span class="spin">◌</span> working…';
+  try {
+    return await fn();
+  } catch (err) {
+    reportError(err);
+    return undefined;
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+function lines(textarea) {
+  return textarea.value.split("\n").map((s) => s.trim()).filter(Boolean);
+}
+
+function numberOrNull(input) {
+  return input.value.trim() === "" ? null : Number(input.value);
+}
+
+/* ------------------------------------------------------------------ tabs */
+
+for (const button of document.querySelectorAll("#tabs button")) {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("#tabs button").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll("section.tab").forEach((s) => s.classList.remove("active"));
+    button.classList.add("active");
+    $(`#tab-${button.dataset.tab}`).classList.add("active");
+    if (button.dataset.tab === "engines") loadEngines();
+    if (button.dataset.tab === "config") loadConfig();
+  });
+}
+
+/* ---------------------------------------------------------------- tokens */
+
+$("#btn-tokens").addEventListener("click", () => {
+  $("#token-api").value = store.apiToken;
+  $("#token-admin").value = store.adminToken;
+  $("#token-dialog").showModal();
+});
+$("#token-save").addEventListener("click", () => {
+  store.apiToken = $("#token-api").value.trim();
+  store.adminToken = $("#token-admin").value.trim();
+  $("#token-dialog").close();
+  updateTokenButton();
+  toast("Tokens saved to this browser");
+});
+$("#token-cancel").addEventListener("click", () => $("#token-dialog").close());
+function updateTokenButton() {
+  const set = store.apiToken || store.adminToken;
+  $("#btn-tokens").textContent = set ? "Tokens ●" : "Tokens";
+}
+updateTokenButton();
+
+/* ---------------------------------------------------------------- health */
+
+async function loadHealth() {
+  const badge = $("#health-badge");
+  try {
+    const body = await api("/health");
+    const n = body.engines_enabled.length;
+    if (body.status === "ok") {
+      badge.className = "badge ok";
+      badge.textContent = `ok — ${n} engine${n === 1 ? "" : "s"}`;
+    } else {
+      badge.className = "badge warn";
+      badge.textContent = "unconfigured — no engine keys set";
+    }
+    if (body.version) $("#version").textContent = "v" + body.version;
+  } catch {
+    badge.className = "badge bad";
+    badge.textContent = "unreachable";
+  }
+}
+loadHealth();
+setInterval(loadHealth, 30000);
+
+/* ------------------------------------------------------- glossary editor */
+
+function glossaryEditor(rootId) {
+  const root = document.getElementById(rootId);
+  const rowsBox = el("div", { class: "glossary-rows" });
+  const addButton = el("button", { class: "ghost small", onclick: () => addRow() }, "Add term");
+  root.append(rowsBox, addButton);
+
+  function addRow(term = "", translation = "") {
+    const termInput = el("input", { type: "text", placeholder: "源词 (source term)", value: term });
+    const transInput = el("input", { type: "text", placeholder: "Translation", value: translation });
+    const row = el("div", { class: "row" },
+      termInput, transInput,
+      el("button", { class: "danger small", onclick: () => row.remove() }, "✕"));
+    rowsBox.append(row);
+  }
+
+  return {
+    addRow,
+    get() {
+      const glossary = {};
+      for (const row of rowsBox.children) {
+        const [termInput, transInput] = row.querySelectorAll("input");
+        if (termInput.value.trim()) glossary[termInput.value.trim()] = transInput.value.trim();
+      }
+      return glossary;
+    },
+    set(glossary) {
+      rowsBox.replaceChildren();
+      for (const [term, translation] of Object.entries(glossary)) addRow(term, translation);
+    },
+    merge(terms) {
+      const current = this.get();
+      for (const [term, translation] of Object.entries(terms))
+        if (!(term in current)) this.addRow(term, translation);
+    },
+  };
+}
+
+const textGlossary = glossaryEditor("text-glossary");
+const htmlGlossary = glossaryEditor("html-glossary");
+
+/* --------------------------------------------------------------- engines */
+
+let enginesCache = [];
+
+function populateEngineSelects() {
+  for (const select of [$("#text-engine"), $("#html-engine")]) {
+    const selected = select.value;
+    select.replaceChildren(el("option", { value: "" }, "auto (routing)"));
+    for (const engine of enginesCache) {
+      const suffix = engine.status === "ok" ? "" : ` — ${engine.status}`;
+      select.append(el("option", { value: engine.id }, engine.id + suffix));
+    }
+    select.value = [...select.options].some((o) => o.value === selected) ? selected : "";
+  }
+}
+
+async function refreshEnginesCache() {
+  try {
+    enginesCache = (await api("/engines")).engines;
+    populateEngineSelects();
+  } catch { /* selects just keep "auto" */ }
+}
+
+async function loadEngines() {
+  const box = $("#engines-table");
+  let body;
+  try {
+    body = await api("/engines");
+  } catch (err) {
+    reportError(err);
+    box.replaceChildren(el("div", { class: "inline-note" },
+      "Could not load engines — check the service and your API token."));
+    return;
+  }
+  enginesCache = body.engines;
+  populateEngineSelects();
+  $("#engines-meta").textContent = `updated ${new Date().toLocaleTimeString()}`;
+
+  const rows = body.engines.map((engine) => {
+    const caps = engine.capabilities;
+    const retry = engine.retry_at
+      ? el("div", { class: "meta" }, `retry ${new Date(engine.retry_at).toLocaleTimeString()}`)
+      : null;
+    const toggle = el("button", {
+      class: "ghost small",
+      onclick: (event) => busy(event.target, async () => {
+        await api(`/engines/${encodeURIComponent(engine.id)}`, {
+          method: "PATCH", body: { enabled: !engine.enabled }, admin: true,
+        });
+        toast(`${engine.id} ${engine.enabled ? "disabled" : "enabled"}`);
+        await loadEngines();
+      }),
+    }, engine.enabled ? "Disable" : "Enable");
+    return el("tr", {},
+      el("td", {}, el("span", { class: "mono" }, engine.id)),
+      el("td", {}, engine.provider),
+      el("td", {}, engine.model || "—"),
+      el("td", {}, engine.kind),
+      el("td", {},
+        `html: ${caps.html}, glossary: ${caps.glossary ? "yes" : "no"}`,
+        caps.max_input_tokens ? `, ≤${caps.max_input_tokens.toLocaleString()} tok` : ""),
+      el("td", {}, el("span", { class: `status-${engine.status}` }, engine.status), retry),
+      el("td", {}, toggle));
+  });
+  box.replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {},
+      ...["Engine", "Provider", "Model", "Kind", "Capabilities", "Status", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, rows)));
+}
+
+$("#engines-refresh").addEventListener("click", (event) => busy(event.target, loadEngines));
+
+/* -------------------------------------------------------- translate text */
+
+const TEXT_SAMPLE = ["斗破苍穹", "天蚕土豆", "玄幻", "热血",
+  "这里是属于斗气的世界，没有花俏艳丽的魔法，有的，仅仅是繁衍到巅峰的斗气！"];
+
+$("#text-sample").addEventListener("click", () => {
+  $("#text-input").value = TEXT_SAMPLE.join("\n");
+  $("#text-context").value = "Metadata of a Chinese xianxia web novel";
+  textGlossary.set({ "斗气": "Dou Qi", "斗破苍穹": "Battle Through the Heavens" });
+});
+
+$("#text-go").addEventListener("click", (event) => busy(event.target, async () => {
+  const texts = lines($("#text-input"));
+  if (!texts.length) { toast("Enter at least one line of text", "error"); return; }
+  const body = { texts, target_lang: $("#text-target").value.trim() || "en" };
+  if ($("#text-source").value.trim()) body.source_lang = $("#text-source").value.trim();
+  if ($("#text-context").value.trim()) body.context = $("#text-context").value.trim();
+  if ($("#text-engine").value) body.engine = $("#text-engine").value;
+  const glossary = textGlossary.get();
+  if (Object.keys(glossary).length) body.glossary = glossary;
+
+  const started = performance.now();
+  const result = await api("/translate/text", { method: "POST", body });
+  const elapsed = ((performance.now() - started) / 1000).toFixed(1);
+
+  const meta = [`engine: ${result.engine}`];
+  if (result.detected_source_lang) meta.push(`detected: ${result.detected_source_lang}`);
+  meta.push(`${elapsed}s`);
+  $("#text-meta").textContent = meta.join(" · ");
+
+  $("#text-results").replaceChildren(
+    el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Source"), el("th", {}, "Translation"))),
+      el("tbody", {}, texts.map((text, i) =>
+        el("tr", {}, el("td", {}, text), el("td", {}, result.translations[i] ?? ""))))),
+    newTermsBlock(result.new_terms, textGlossary) || "");
+}));
+
+function newTermsBlock(newTerms, glossary) {
+  if (!newTerms || !Object.keys(newTerms).length) return null;
+  const items = Object.entries(newTerms).map(([term, translation]) =>
+    el("li", {}, el("span", { class: "mono" }, term), " → ", translation));
+  return el("div", { style: "margin-top:12px" },
+    el("h3", {}, "New glossary terms"),
+    el("ul", {}, items),
+    el("button", {
+      class: "ghost small",
+      onclick: (event) => { glossary.merge(newTerms); event.target.disabled = true; },
+    }, "Merge into glossary"));
+}
+
+/* ------------------------------------------------------ translate chapter */
+
+const CHAPTER_SAMPLES = {
+  zh: {
+    html: `<h1>第一章 陨落的天才</h1>
+<p>"斗之力，三段！"</p>
+<p>望着测验魔石碑上面闪亮得甚至有些刺眼的五个大字，少年面无表情，唇角有着一抹自嘲。</p>
+<p>中年男子看着面前的少年，叹了一口气：<b>萧炎</b>，你可知道，三年前，你还是家族百年来最年轻的斗者？</p>
+<p>少年缓缓抬头，露出一张清秀的脸庞，微微一笑："<i>三十年河东，三十年河西，莫欺少年穷。</i>"</p>
+<p><img src="images/stone-tablet.jpg" alt=""/></p>
+<p>乌坦城位于加玛帝国西北方，城中萧家，曾经也算得上是名门望族。斗气大陆，没有花俏艳丽的魔法，有的，仅仅是繁衍到巅峰的斗气！</p>`,
+    novel: "斗破苍穹",
+    chapter: "第一章 陨落的天才",
+    synopsis: "A once-genius young fighter loses his talent and vows to reclaim it.",
+    glossary: { "萧炎": "Xiao Yan", "斗之力": "Dou Force", "乌坦城": "Wutan City" },
+  },
+  ja: {
+    html: `<h1>第一話　異世界への扉</h1>
+<p>目を覚ますと、そこは見知らぬ森の中だった。</p>
+<p>「ここは……どこだ？」</p>
+<p>佐藤健一は頭を押さえながら立ち上がった。昨日までは東京の小さなアパートで暮らす、ごく普通の会社員だったはずだ。</p>
+<p>空を見上げると、<b>二つの月</b>が浮かんでいた。それは明らかに、地球ではあり得ない光景だった。</p>
+<p>「ステータス・オープン」</p>`,
+    novel: "異世界への扉",
+    chapter: "第一話　異世界への扉",
+    synopsis: "An ordinary office worker wakes up in another world.",
+    glossary: { "佐藤健一": "Kenichi Sato" },
+  },
+  ko: {
+    html: `<h1>1화 회귀자의 아침</h1>
+<p>눈을 떴을 때, 김도윤은 자신의 옛 방 천장을 보고 있었다.</p>
+<p>"……꿈인가?"</p>
+<p>손을 들어 보았다. 주름 하나 없는 젊은 손. 이십 년 전, 스무 살의 몸이었다.</p>
+<p>분명히 그는 마왕성 최상층에서 죽었다. 동료들의 시체 위에서, 마왕의 검에 심장을 꿰뚫린 채로. 그런데 지금, <b>회귀</b>한 것이다.</p>
+<p>도윤은 주먹을 쥐었다. <i>이번에는 아무도 죽게 하지 않는다.</i></p>`,
+    novel: "회귀자의 아침",
+    chapter: "1화 회귀자의 아침",
+    synopsis: "A hero who died to the Demon King wakes up twenty years in the past.",
+    glossary: { "김도윤": "Kim Do-yoon", "마왕": "Demon King" },
+  },
+};
+
+for (const button of document.querySelectorAll("[data-sample]")) {
+  button.addEventListener("click", () => {
+    const sample = CHAPTER_SAMPLES[button.dataset.sample];
+    $("#html-input").value = sample.html;
+    $("#html-ctx-title").value = sample.novel;
+    $("#html-ctx-chapter").value = sample.chapter;
+    $("#html-ctx-synopsis").value = sample.synopsis;
+    htmlGlossary.set(sample.glossary);
+    $("#html-results").style.display = "none";
+    $("#html-warnings").replaceChildren();
+    $("#html-newterms").replaceChildren();
+  });
+}
+
+$("#html-go").addEventListener("click", (event) => busy(event.target, async () => {
+  const html = $("#html-input").value.trim();
+  if (!html) { toast("Enter some chapter HTML", "error"); return; }
+  const body = {
+    html,
+    target_lang: $("#html-target").value.trim() || "en",
+    extract_terms: $("#html-extract").checked,
+  };
+  if ($("#html-source").value.trim()) body.source_lang = $("#html-source").value.trim();
+  if ($("#html-engine").value) body.engine = $("#html-engine").value;
+  const glossary = htmlGlossary.get();
+  if (Object.keys(glossary).length) body.glossary = glossary;
+  const context = {};
+  if ($("#html-ctx-title").value.trim()) context.novel_title = $("#html-ctx-title").value.trim();
+  if ($("#html-ctx-chapter").value.trim()) context.chapter_title = $("#html-ctx-chapter").value.trim();
+  if ($("#html-ctx-synopsis").value.trim()) context.synopsis = $("#html-ctx-synopsis").value.trim();
+  if (Object.keys(context).length) body.context = context;
+
+  const started = performance.now();
+  const result = await api("/translate/html", { method: "POST", body });
+  const elapsed = ((performance.now() - started) / 1000).toFixed(1);
+
+  const meta = [`engine: ${result.engine}`];
+  if (result.detected_source_lang) meta.push(`detected: ${result.detected_source_lang}`);
+  meta.push(`${elapsed}s`);
+  $("#html-meta").textContent = meta.join(" · ");
+
+  $("#html-warnings").replaceChildren(...result.warnings.map((warning) =>
+    el("div", { class: "inline-note", style: "margin:8px 0" }, "⚠ " + warning)));
+  $("#html-newterms").replaceChildren(newTermsBlock(result.new_terms, htmlGlossary) || "");
+
+  const frameStyle = "<style>body{font:16px/1.7 Georgia,serif;margin:16px;max-width:70ch}img{max-width:100%}</style>";
+  $("#frame-source").srcdoc = frameStyle + html;
+  $("#frame-target").srcdoc = frameStyle + result.html;
+  $("#html-raw-pre").textContent = result.html;
+  $("#html-results").style.display = "";
+}));
+
+$("#html-view-rendered").addEventListener("click", () => {
+  $("#html-rendered").style.display = "";
+  $("#html-raw").style.display = "none";
+});
+$("#html-view-raw").addEventListener("click", () => {
+  $("#html-rendered").style.display = "none";
+  $("#html-raw").style.display = "";
+});
+
+/* ---------------------------------------------------------------- detect */
+
+$("#detect-sample").addEventListener("click", () => {
+  $("#detect-input").value = [
+    "斗气大陆，没有花俏艳丽的魔法。",
+    "目を覚ますと、そこは見知らぬ森の中だった。",
+    "눈을 떴을 때, 김도윤은 자신의 옛 방 천장을 보고 있었다.",
+    "The quick brown fox jumps over the lazy dog.",
+  ].join("\n");
+});
+
+$("#detect-go").addEventListener("click", (event) => busy(event.target, async () => {
+  const texts = lines($("#detect-input"));
+  if (!texts.length) { toast("Enter at least one line of text", "error"); return; }
+  const body = await api("/detect", { method: "POST", body: { texts } });
+  const rows = body.results.map((result, i) =>
+    el("tr", {},
+      el("td", {}, texts[i]),
+      el("td", {}, el("span", { class: "mono" }, result.language)),
+      el("td", {},
+        el("div", { class: "row", style: "align-items:center" },
+          el("div", { class: "bar" },
+            el("div", { style: `width:${Math.round(result.confidence * 100)}%` })),
+          `${(result.confidence * 100).toFixed(0)}%`))));
+  $("#detect-results").replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {},
+      el("th", {}, "Text"), el("th", {}, "Language"), el("th", {}, "Confidence"))),
+    el("tbody", {}, rows)));
+}));
+
+/* ---------------------------------------------------------------- config */
+
+let currentConfig = null;
+let routingDraft = null;
+
+async function loadConfig() {
+  try {
+    currentConfig = await api("/config");
+  } catch (err) {
+    reportError(err);
+    $("#config-meta").textContent = "could not load config";
+    return;
+  }
+  routingDraft = JSON.parse(JSON.stringify(currentConfig.routing));
+  $("#config-meta").textContent = `loaded ${new Date().toLocaleTimeString()}`;
+  renderProviders();
+  renderConfigEngines();
+  renderRouting();
+  renderFailurePolicy();
+  $("#config-json").value = JSON.stringify(currentConfig, null, 2);
+}
+
+$("#config-refresh").addEventListener("click", (event) => busy(event.target, loadConfig));
+
+/* ---- providers ---- */
+
+function renderProviders() {
+  const rows = currentConfig.providers.map((provider) => {
+    const limits = [
+      provider.rps ? `${provider.rps} rps` : null,
+      provider.rpm ? `${provider.rpm} rpm` : null,
+      `conc ${provider.max_concurrency}`,
+      provider.monthly_chars ? `${provider.monthly_chars.toLocaleString()} chars/mo` : null,
+    ].filter(Boolean).join(", ");
+    return el("tr", {},
+      el("td", {}, el("span", { class: "mono" }, provider.id)),
+      el("td", {}, provider.kind),
+      el("td", {}, el("span", { class: "mono" }, provider.base_url || "—")),
+      el("td", {}, el("span", { class: "mono" }, provider.api_key_env || "no key needed")),
+      el("td", {}, limits),
+      el("td", {},
+        el("button", { class: "ghost small", onclick: () => openProviderDialog(provider) }, "Edit"),
+        " ",
+        el("button", {
+          class: "danger small",
+          onclick: (event) => confirmDelete(event.target,
+            `Delete provider "${provider.id}"?`,
+            `/providers/${encodeURIComponent(provider.id)}`),
+        }, "Delete")));
+  });
+  $("#providers-table").replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {},
+      ...["Id", "Kind", "Base URL", "Key env", "Limits", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, rows)));
+}
+
+let providerEditing = null; // null = create
+
+function openProviderDialog(provider) {
+  providerEditing = provider ? provider.id : null;
+  $("#provider-dialog-title").textContent = provider ? `Provider: ${provider.id}` : "New provider";
+  $("#pv-id").value = provider ? provider.id : "";
+  $("#pv-id").disabled = !!provider;
+  $("#pv-kind").value = provider ? provider.kind : "openai";
+  $("#pv-baseurl").value = provider?.base_url || "";
+  $("#pv-keyenv").value = provider?.api_key_env || "";
+  $("#pv-rps").value = provider?.rps ?? "";
+  $("#pv-rpm").value = provider?.rpm ?? "";
+  $("#pv-conc").value = provider?.max_concurrency ?? 1;
+  $("#pv-monthly").value = provider?.monthly_chars ?? "";
+  $("#provider-dialog").showModal();
+}
+
+$("#provider-add").addEventListener("click", () => openProviderDialog(null));
+$("#pv-cancel").addEventListener("click", () => $("#provider-dialog").close());
+$("#pv-save").addEventListener("click", (event) => busy(event.target, async () => {
+  const payload = {
+    kind: $("#pv-kind").value,
+    base_url: $("#pv-baseurl").value.trim() || null,
+    api_key_env: $("#pv-keyenv").value.trim() || null,
+    rps: numberOrNull($("#pv-rps")),
+    rpm: numberOrNull($("#pv-rpm")),
+    max_concurrency: numberOrNull($("#pv-conc")) ?? 1,
+    monthly_chars: numberOrNull($("#pv-monthly")),
+  };
+  if (providerEditing) {
+    await api(`/providers/${encodeURIComponent(providerEditing)}`,
+      { method: "PATCH", body: payload, admin: true });
+    toast(`Provider ${providerEditing} updated`);
+  } else {
+    const id = $("#pv-id").value.trim();
+    if (!id) { toast("Provider id is required", "error"); return; }
+    await api("/providers", { method: "POST", body: { id, ...payload }, admin: true });
+    toast(`Provider ${id} created`);
+  }
+  $("#provider-dialog").close();
+  await loadConfig();
+}));
+
+/* ---- engines (config) ---- */
+
+function renderConfigEngines() {
+  const rows = currentConfig.engines.map((engine) => el("tr", {},
+    el("td", {}, el("span", { class: "mono" }, engine.id)),
+    el("td", {}, engine.provider),
+    el("td", {}, el("span", { class: "mono" }, engine.model || "—")),
+    el("td", {}, engine.enabled
+      ? el("span", { class: "status-ok" }, "enabled")
+      : el("span", { class: "status-disabled" }, "disabled")),
+    el("td", { class: "num" }, engine.max_input_tokens?.toLocaleString() || "—"),
+    el("td", {},
+      el("button", { class: "ghost small", onclick: () => openEngineDialog(engine) }, "Edit"),
+      " ",
+      el("button", {
+        class: "danger small",
+        onclick: (event) => confirmDelete(event.target,
+          `Delete engine "${engine.id}"? It is also removed from routing lanes.`,
+          `/engines/${encodeURIComponent(engine.id)}`),
+      }, "Delete"))));
+  $("#config-engines-table").replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {},
+      ...["Id", "Provider", "Model", "Enabled", "Max input tok", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, rows)));
+}
+
+let engineEditing = null;
+
+function openEngineDialog(engine) {
+  engineEditing = engine ? engine.id : null;
+  $("#engine-dialog-title").textContent = engine ? `Engine: ${engine.id}` : "New engine";
+  $("#en-id").value = engine ? engine.id : "";
+  $("#en-id").disabled = !!engine;
+  const providerSelect = $("#en-provider");
+  providerSelect.replaceChildren(
+    ...currentConfig.providers.map((p) => el("option", { value: p.id }, p.id)));
+  if (engine) providerSelect.value = engine.provider;
+  $("#en-model").value = engine?.model || "";
+  $("#en-maxtokens").value = engine?.max_input_tokens ?? "";
+  $("#en-chunktokens").value = engine?.chunk_tokens ?? "";
+  $("#en-enabled").checked = engine ? engine.enabled : true;
+  $("#en-extra").value = engine && Object.keys(engine.extra_body || {}).length
+    ? JSON.stringify(engine.extra_body, null, 2) : "";
+  $("#engine-dialog").showModal();
+}
+
+$("#engine-add").addEventListener("click", () => {
+  if (!currentConfig?.providers.length) {
+    toast("Create a provider first", "error");
+    return;
+  }
+  openEngineDialog(null);
+});
+$("#en-cancel").addEventListener("click", () => $("#engine-dialog").close());
+$("#en-save").addEventListener("click", (event) => busy(event.target, async () => {
+  let extraBody = {};
+  if ($("#en-extra").value.trim()) {
+    try {
+      extraBody = JSON.parse($("#en-extra").value);
+    } catch {
+      toast("Extra body is not valid JSON", "error");
+      return;
+    }
+  }
+  const payload = {
+    provider: $("#en-provider").value,
+    model: $("#en-model").value.trim() || null,
+    enabled: $("#en-enabled").checked,
+    max_input_tokens: numberOrNull($("#en-maxtokens")),
+    chunk_tokens: numberOrNull($("#en-chunktokens")),
+    extra_body: extraBody,
+  };
+  if (engineEditing) {
+    await api(`/engines/${encodeURIComponent(engineEditing)}`,
+      { method: "PATCH", body: payload, admin: true });
+    toast(`Engine ${engineEditing} updated`);
+  } else {
+    const id = $("#en-id").value.trim();
+    if (!id) { toast("Engine id is required", "error"); return; }
+    await api("/engines", { method: "POST", body: { id, ...payload }, admin: true });
+    toast(`Engine ${id} created`);
+  }
+  $("#engine-dialog").close();
+  await loadConfig();
+  await refreshEnginesCache();
+}));
+
+async function confirmDelete(button, question, path) {
+  if (!window.confirm(question)) return;
+  await busy(button, async () => {
+    await api(path, { method: "DELETE", admin: true });
+    toast("Deleted");
+    await loadConfig();
+    await refreshEnginesCache();
+  });
+}
+
+/* ---- routing ---- */
+
+const LANE_LABELS = { chapter: "Chapter lane", short_text: "Short-text lane" };
+
+function renderRouting() {
+  for (const lane of ["chapter", "short_text"]) {
+    const box = document.getElementById(`lane-${lane}`);
+    const ids = routingDraft[lane];
+    const items = ids.map((engineId, index) => el("li", {},
+      el("span", { class: "mono" }, engineId), " ",
+      el("button", {
+        class: "ghost small", disabled: index === 0 ? "" : null,
+        onclick: () => { [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]]; renderRouting(); },
+      }, "↑"), " ",
+      el("button", {
+        class: "ghost small", disabled: index === ids.length - 1 ? "" : null,
+        onclick: () => { [ids[index + 1], ids[index]] = [ids[index], ids[index + 1]]; renderRouting(); },
+      }, "↓"), " ",
+      el("button", {
+        class: "danger small",
+        onclick: () => { ids.splice(index, 1); renderRouting(); },
+      }, "✕")));
+    const unused = currentConfig.engines.map((e) => e.id).filter((id) => !ids.includes(id));
+    const addSelect = el("select", { style: "width:auto" },
+      el("option", { value: "" }, "add engine…"),
+      ...unused.map((id) => el("option", { value: id }, id)));
+    addSelect.addEventListener("change", () => {
+      if (addSelect.value) { ids.push(addSelect.value); renderRouting(); }
+    });
+    box.replaceChildren(
+      el("h3", { style: "margin-top:0" }, LANE_LABELS[lane]),
+      ids.length ? el("ol", {}, items) : el("p", { class: "meta" }, "empty — nothing routes here"),
+      unused.length ? addSelect : "");
+  }
+}
+
+$("#routing-save").addEventListener("click", (event) => busy(event.target, async () => {
+  await api("/routing", { method: "PUT", body: routingDraft, admin: true });
+  toast("Routing saved");
+  await loadConfig();
+}));
+$("#routing-reset").addEventListener("click", () => {
+  routingDraft = JSON.parse(JSON.stringify(currentConfig.routing));
+  renderRouting();
+});
+
+/* ---- failure policy ---- */
+
+function renderFailurePolicy() {
+  const policy = currentConfig.failure_policy;
+  $("#fp-retries").value = policy.transient_retries;
+  $("#fp-backoff").value = policy.backoff_base_seconds;
+  $("#fp-threshold").value = policy.failure_threshold;
+  $("#fp-cooldown").value = policy.cooldown_seconds;
+}
+
+$("#fp-save").addEventListener("click", (event) => busy(event.target, async () => {
+  await api("/config/failure-policy", {
+    method: "PUT", admin: true,
+    body: {
+      transient_retries: Number($("#fp-retries").value),
+      backoff_base_seconds: Number($("#fp-backoff").value),
+      failure_threshold: Number($("#fp-threshold").value),
+      cooldown_seconds: Number($("#fp-cooldown").value),
+    },
+  });
+  toast("Failure policy saved");
+  await loadConfig();
+}));
+
+/* ---- raw config ---- */
+
+$("#config-apply").addEventListener("click", (event) => busy(event.target, async () => {
+  let parsed;
+  try {
+    parsed = JSON.parse($("#config-json").value);
+  } catch {
+    toast("Config is not valid JSON", "error");
+    return;
+  }
+  if (!window.confirm("Replace the entire runtime config? This persists to config.yml."))
+    return;
+  await api("/config", { method: "PUT", body: parsed, admin: true });
+  toast("Config replaced");
+  await loadConfig();
+  await refreshEnginesCache();
+}));
+
+/* ------------------------------------------------------------------ init */
+
+refreshEnginesCache();
+</script>
+</body>
+</html>

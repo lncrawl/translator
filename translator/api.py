@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import os
 import secrets
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import FileResponse
 
 from . import __version__
 from .config import AppConfig
@@ -28,6 +30,8 @@ from .schemas import (
 )
 
 AUTH_TOKEN_ENV = "AUTH_TOKEN"
+
+INDEX_HTML = Path(__file__).resolve().parent / "static" / "index.html"
 
 
 def require_auth(
@@ -58,16 +62,21 @@ health_router = APIRouter()
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 
-@health_router.get("/")
-def root() -> dict[str, str]:
-    return {"service": "translator", "version": __version__, "docs": "/docs"}
+@health_router.get("/", include_in_schema=False)
+def root() -> FileResponse:
+    """Demo & configuration UI (self-contained static page)."""
+    return FileResponse(INDEX_HTML, media_type="text/html")
 
 
 @health_router.get("/health")
 def health(request: Request) -> dict[str, object]:
     config = _config(request)
     usable = [r.id for r in config.resolved_engines() if r.available]
-    return {"status": "ok" if usable else "unconfigured", "engines_enabled": usable}
+    return {
+        "status": "ok" if usable else "unconfigured",
+        "version": __version__,
+        "engines_enabled": usable,
+    }
 
 
 @router.get("/config")
