@@ -1,6 +1,12 @@
 # Copy to config.yml (or point $TRANSLATOR_CONFIG at it) and set the key
-# env vars you have. Engines whose api_key_env is unset auto-disable.
+# env vars you have. Engines whose api_key_env is unset auto-disable, so you
+# can keep all entries and only export the keys you actually signed up for.
+#
+# All lanes below except DeepL are free WITHOUT a credit card (as of
+# 2026-07; free tiers churn — see docs/translation-engines.md).
 engines:
+  # z.ai — email signup. GLM-4.7-Flash is free with no token cap (~1 req/s).
+  # Best free primary for CJK→EN.
   - id: zai-glm-flash
     kind: openai
     base_url: https://api.z.ai/api/paas/v4
@@ -10,6 +16,8 @@ engines:
     max_concurrency: 1
     max_input_tokens: 200000
 
+  # aistudio.google.com — Google account only. Top quality; quotas volatile
+  # (check your real limits at aistudio.google.com/rate-limit).
   - id: gemini-flash
     kind: openai
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
@@ -19,12 +27,56 @@ engines:
     max_concurrency: 2
     max_input_tokens: 250000
 
-  - id: deepl
-    kind: deepl
-    api_key_env: DEEPL_API_KEY
-    monthly_chars: 500000
+  # cloud.cerebras.ai — free tier, 1M tokens/day (~175 chapters), very fast.
+  # - id: cerebras-glm
+  #   kind: openai
+  #   base_url: https://api.cerebras.ai/v1
+  #   api_key_env: CEREBRAS_API_KEY
+  #   model: zai-glm-4.7
+  #   rpm: 5
+  #   max_concurrency: 1
+  #   max_input_tokens: 30000
 
-  # Optional local lane: llama.cpp server from compose (no api key needed).
+  # console.mistral.ai — Experiment plan, ~1B tokens/month; phone
+  # verification, no card. Opt out of data training in the admin console.
+  # - id: mistral-large
+  #   kind: openai
+  #   base_url: https://api.mistral.ai/v1
+  #   api_key_env: MISTRAL_API_KEY
+  #   model: mistral-large-latest
+  #   rpm: 2
+  #   max_concurrency: 1
+  #   max_input_tokens: 100000
+
+  # console.groq.com — free, no card, strict token/day caps (~35 chapters).
+  # - id: groq-oss
+  #   kind: openai
+  #   base_url: https://api.groq.com/openai/v1
+  #   api_key_env: GROQ_API_KEY
+  #   model: openai/gpt-oss-120b
+  #   rpm: 30
+  #   max_concurrency: 1
+  #   max_input_tokens: 8000
+
+  # openrouter.ai — 50 req/day free (1,000/day after a one-time $10 credit
+  # purchase). Free model lineup churns monthly; check openrouter.ai/models.
+  # - id: openrouter-free
+  #   kind: openai
+  #   base_url: https://openrouter.ai/api/v1
+  #   api_key_env: OPENROUTER_API_KEY
+  #   model: nvidia/nemotron-3-super-120b-a12b:free
+  #   rpm: 20
+  #   max_concurrency: 1
+  #   max_input_tokens: 100000
+
+  # deepl.com/pro-api — Free plan needs a credit card at signup (never
+  # charged). Optional NMT fallback for short strings; skippable.
+  # - id: deepl
+  #   kind: deepl
+  #   api_key_env: DEEPL_API_KEY
+  #   monthly_chars: 500000
+
+  # Local llama.cpp sidecar from compose (no api key; see docs/deployment.md).
   # - id: local-qwen
   #   kind: openai
   #   base_url: http://llamacpp:8080/v1
@@ -32,6 +84,7 @@ engines:
   #   max_concurrency: 1
   #   max_input_tokens: 8000
 
+# Lanes are tried in order; quota-exhausted engines are skipped until reset.
 routing:
   chapter: [zai-glm-flash, gemini-flash]
-  short_text: [zai-glm-flash, gemini-flash, deepl]
+  short_text: [zai-glm-flash, gemini-flash]

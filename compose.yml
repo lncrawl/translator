@@ -1,0 +1,30 @@
+services:
+  translator:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config.yml:/app/config.yml:ro
+    environment:
+      # Pass through whichever engine keys you have set on the host.
+      - ZAI_API_KEY
+      - GEMINI_API_KEY
+      - DEEPL_API_KEY
+      - AUTH_TOKEN
+    restart: unless-stopped
+
+  # Optional local-model lane: start with `docker compose --profile local up`.
+  # Put a GGUF at ./models/model.gguf first (see docs/deployment.md).
+  llamacpp:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    profiles: [local]
+    command: >
+      -m /models/model.gguf
+      --host 0.0.0.0
+      --port 8080
+      --ctx-size 8192
+      --threads 4
+      --no-warmup
+    volumes:
+      - ./models:/models:ro
+    restart: unless-stopped

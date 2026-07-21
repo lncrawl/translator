@@ -1,0 +1,17 @@
+.git
+.venv
+.ruff_cache
+.mypy_cache
+.pytest_cache
+__pycache__
+*.py[cod]
+tests/
+docs/
+models/
+data/
+config.yml
+config.example.yml
+compose.yml
+.env
+.env.*
+AGENTS.md
