@@ -112,7 +112,7 @@ def test_quota_exhaustion_surfaces_as_503(
 
     by_id = {e["id"]: e for e in client.get("/engines").json()["engines"]}
     assert by_id["fake"]["status"] == "quota_exhausted"
-    assert by_id["fake"]["quota_resets_at"] is not None
+    assert by_id["fake"]["retry_at"] is not None
 
 
 def test_invalid_lang_tags_rejected(monkeypatch: pytest.MonkeyPatch) -> None:

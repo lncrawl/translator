@@ -2,16 +2,14 @@ import json
 
 import httpx
 import pytest
+from helpers import make_resolved
 
-from translator.config import EngineConfig
 from translator.engines.base import EngineError, ErrorKind
 from translator.engines.openai_compat import OpenAICompatEngine
 
 
 def make_engine(handler: httpx.MockTransport) -> OpenAICompatEngine:
-    config = EngineConfig(
-        id="test", kind="openai", base_url="http://fake/v1", model="test-model"
-    )
+    config = make_resolved(model="test-model")
     engine = OpenAICompatEngine(config)
     engine._client = httpx.AsyncClient(base_url="http://fake/v1", transport=handler)
     return engine
@@ -49,10 +47,7 @@ async def test_extra_body_merged_into_request() -> None:
         seen["body"] = json.loads(request.content)
         return completion('["hi"]')
 
-    config = EngineConfig(
-        id="test",
-        kind="openai",
-        base_url="http://fake/v1",
+    config = make_resolved(
         model="test-model",
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )

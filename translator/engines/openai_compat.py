@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 
 from .. import prompts
-from ..config import EngineConfig
+from ..config import ResolvedEngine
 from ..html_tools import count_cjk, repair_untagged_output, strip_text, tag_names
 from ..languages import base as base_lang
 from ..schemas import HtmlContext
@@ -35,7 +35,7 @@ _TIMEOUT = httpx.Timeout(connect=15.0, read=900.0, write=60.0, pool=60.0)
 
 
 class OpenAICompatEngine(Engine):
-    def __init__(self, config: EngineConfig) -> None:
+    def __init__(self, config: ResolvedEngine) -> None:
         super().__init__(config)
         if not config.base_url:
             raise ValueError(f"engine {config.id!r}: openai kind requires base_url")

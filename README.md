@@ -13,11 +13,13 @@ consistency across thousands of chapters.
 
 ## Quick start
 
+No config file needed — every known free provider is pre-wired, and an
+engine activates when its key env var is set:
+
 ```bash
-cp config.example.yml config.yml   # choose engine lanes
-export ZAI_API_KEY=...             # keys referenced by your config
-docker compose up -d --build
-curl http://localhost:8000/health
+export ZAI_API_KEY=...             # whichever keys you have
+docker compose up -d
+curl http://localhost:8000/health  # shows which engines came up
 ```
 
 See [docs/deployment.md](docs/deployment.md) for engine keys, the optional
@@ -28,10 +30,14 @@ for the engine research.
 ## API
 
 - `GET /health` — liveness/readiness
-- `GET /engines` — configured engines with live quota status
+- `GET /engines` — configured engines with live status (quota, cooldowns)
 - `POST /detect` — local language detection (no engine quota)
 - `POST /translate/text` — batched short strings (titles, tags, synopsis)
 - `POST /translate/html` — one chapter per call, glossary in/new terms out
+- `GET /config` + CRUD on `/providers`, `/engines`, `/routing` — runtime
+  config management; changes apply atomically and persist to `config.yml`
+  (writes need `ADMIN_TOKEN`, see
+  [docs/deployment.md](docs/deployment.md))
 
 ## Development
 

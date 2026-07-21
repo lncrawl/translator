@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from ..config import EngineConfig
+from ..config import ResolvedEngine
 from ..languages import deepl_source_lang, deepl_target_lang
 from ..schemas import HtmlContext
 from .base import (
@@ -41,7 +41,7 @@ def _seconds_until_next_month() -> int:
 
 
 class DeepLEngine(Engine):
-    def __init__(self, config: EngineConfig) -> None:
+    def __init__(self, config: ResolvedEngine) -> None:
         super().__init__(config)
         key = config.api_key
         if not key:

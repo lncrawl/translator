@@ -1,6 +1,7 @@
 import pytest
 from helpers import FakeEngine, make_config
 
+from translator.config import AppConfig
 from translator.engines.base import EngineError, EngineStatus, ErrorKind, HtmlSupport
 from translator.errors import ApiError
 from translator.router import Router
@@ -90,7 +91,12 @@ async def test_disabled_engine_override_rejected() -> None:
     config = make_config(
         "a",
         extra_engines=[
-            {"id": "off", "kind": "openai", "api_key_env": "NOPE_UNSET_KEY"}
+            {
+                "id": "off",
+                "kind": "openai",
+                "base_url": "http://fake",
+                "api_key_env": "NOPE_UNSET_KEY",
+            }
         ],
     )
     router = make_router(FakeEngine("a"), config=config)
@@ -146,6 +152,80 @@ async def test_chunk_tokens_overrides_default_budget() -> None:
     resp = await router.translate_html(TranslateHtmlRequest(html=html))
     assert len(engine.html_calls) == 2
     assert any("2 chunks" in w for w in resp.warnings)
+
+
+async def test_quota_error_benches_whole_provider() -> None:
+    # Two models on one account: exhausting quota via one blocks the other.
+    config = AppConfig.model_validate(
+        {
+            "providers": [{"id": "p", "kind": "openai", "base_url": "http://x"}],
+            "engines": [
+                {"id": "a", "provider": "p"},
+                {"id": "b", "provider": "p"},
+            ],
+            "routing": {"chapter": ["a", "b"], "short_text": ["a", "b"]},
+        }
+    )
+    a = FakeEngine(
+        "a", errors=[EngineError("q", ErrorKind.QUOTA, retry_after_seconds=120)]
+    )
+    b = FakeEngine("b")
+    router = Router([a, b], config, transient_retries=0, backoff_base_seconds=0)
+    with pytest.raises(ApiError) as excinfo:
+        await router.translate_text(TranslateTextRequest(texts=["hi"]))
+    assert excinfo.value.status_code == 503
+    assert b.segment_calls == []  # sibling engine never wastes the call
+    assert router.status("a") is EngineStatus.QUOTA_EXHAUSTED
+    assert router.status("b") is EngineStatus.QUOTA_EXHAUSTED
+
+
+async def test_repeated_failures_bench_engine_for_cooldown() -> None:
+    config = AppConfig.model_validate(
+        {
+            "providers": [
+                {"id": "a", "kind": "openai", "base_url": "http://x"},
+                {"id": "b", "kind": "openai", "base_url": "http://x"},
+            ],
+            "engines": [
+                {"id": "a", "provider": "a"},
+                {"id": "b", "provider": "b"},
+            ],
+            "routing": {"chapter": ["a", "b"], "short_text": ["a", "b"]},
+            "failure_policy": {"failure_threshold": 2, "cooldown_seconds": 60},
+        }
+    )
+    a = FakeEngine(
+        "a",
+        errors=[
+            EngineError("boom", ErrorKind.FATAL),
+            EngineError("boom", ErrorKind.FATAL),
+        ],
+    )
+    b = FakeEngine("b")
+    router = Router([a, b], config, transient_retries=0, backoff_base_seconds=0)
+
+    # Two failing requests reach the threshold; both fall back to b.
+    for _ in range(2):
+        resp = await router.translate_text(TranslateTextRequest(texts=["hi"]))
+        assert resp.engine == "b"
+    assert router.status("a") is EngineStatus.ERROR
+    assert router.retry_at("a") is not None
+
+    # While benched, a is skipped without being called.
+    await router.translate_text(TranslateTextRequest(texts=["hi"]))
+    assert len(a.segment_calls) == 2
+    assert len(b.segment_calls) == 3
+
+
+async def test_success_resets_failure_count() -> None:
+    config = make_config("a")
+    a = FakeEngine("a", errors=[EngineError("boom", ErrorKind.TRANSIENT)])
+    router = Router([a], config, transient_retries=0, backoff_base_seconds=0)
+    with pytest.raises(ApiError):
+        await router.translate_text(TranslateTextRequest(texts=["hi"]))
+    resp = await router.translate_text(TranslateTextRequest(texts=["hi"]))
+    assert resp.engine == "a"
+    assert router.status("a") is EngineStatus.OK
 
 
 async def test_glossary_unsupported_engine_warns() -> None:

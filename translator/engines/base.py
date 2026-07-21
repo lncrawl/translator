@@ -6,7 +6,7 @@ import abc
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from ..config import EngineConfig
+from ..config import ResolvedEngine
 from ..schemas import HtmlContext
 
 
@@ -59,7 +59,7 @@ class EngineError(Exception):
 class Engine(abc.ABC):
     """A translation backend. Instances are long-lived and concurrency-safe."""
 
-    def __init__(self, config: EngineConfig) -> None:
+    def __init__(self, config: ResolvedEngine) -> None:
         self.config = config
 
     @property

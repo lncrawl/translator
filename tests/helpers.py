@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from translator.config import AppConfig, EngineConfig
+from typing import Any
+
+from translator.config import AppConfig, ResolvedEngine
 from translator.engines.base import (
     Engine,
     EngineCapabilities,
@@ -10,6 +12,29 @@ from translator.engines.base import (
     HtmlSupport,
 )
 from translator.schemas import HtmlContext
+
+
+def make_resolved(
+    engine_id: str = "test",
+    *,
+    kind: Any = "openai",
+    base_url: str | None = "http://fake/v1",
+    api_key_env: str | None = None,
+    model: str | None = None,
+    extra_body: dict[str, Any] | None = None,
+) -> ResolvedEngine:
+    return ResolvedEngine(
+        id=engine_id,
+        provider_id=engine_id,
+        kind=kind,
+        base_url=base_url,
+        api_key_env=api_key_env,
+        model=model,
+        enabled=True,
+        max_input_tokens=None,
+        chunk_tokens=None,
+        extra_body=extra_body or {},
+    )
 
 
 class FakeEngine(Engine):
@@ -28,10 +53,15 @@ class FakeEngine(Engine):
         new_terms: dict[str, str] | None = None,
     ) -> None:
         super().__init__(
-            EngineConfig(
+            ResolvedEngine(
                 id=engine_id,
+                provider_id=engine_id,
                 kind="openai",
                 base_url="http://fake",
+                api_key_env=None,
+                model=None,
+                enabled=True,
+                max_input_tokens=None,
                 chunk_tokens=chunk_tokens,
             )
         )

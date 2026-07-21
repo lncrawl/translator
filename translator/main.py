@@ -6,6 +6,7 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
@@ -14,12 +15,13 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from . import __version__
+from .admin import admin_router
 from .api import health_router, router
-from .config import AppConfig, load_config
-from .engines import build_engine
+from .config import AppConfig, load_config, resolve_config_path
 from .errors import ApiError
 from .router import Router
 from .schemas import ErrorDetail, ErrorResponse
+from .state import ConfigStore, build_router
 
 logger = logging.getLogger(__name__)
 
@@ -39,31 +41,27 @@ def configure_logging() -> None:
     )
 
 
-def build_router(config: AppConfig) -> Router:
-    engines = []
-    for engine_config in config.engines:
-        if not engine_config.enabled:
-            logger.warning(
-                "engine %s disabled: $%s not set",
-                engine_config.id,
-                engine_config.api_key_env,
-            )
-            continue
-        engines.append(build_engine(engine_config))
-    return Router(engines, config)
-
-
 def create_app(
-    config: AppConfig | None = None, engine_router: Router | None = None
+    config: AppConfig | None = None,
+    engine_router: Router | None = None,
+    config_path: str | Path | None = None,
 ) -> FastAPI:
+    """Build the app. When ``config`` is given explicitly (tests), runtime
+    config changes are not persisted unless ``config_path`` is also given."""
     configure_logging()
-    resolved_config = config if config is not None else load_config()
+    if config is not None:
+        resolved_config = config
+        persist_path = Path(config_path) if config_path is not None else None
+    else:
+        persist_path = resolve_config_path(config_path)
+        resolved_config = load_config(persist_path)
     resolved_router = engine_router or build_router(resolved_config)
+    store = ConfigStore(resolved_config, resolved_router, persist_path)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
-        await resolved_router.close()
+        await store.close()
 
     app = FastAPI(title="translator", version=__version__, lifespan=lifespan)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
@@ -88,10 +86,10 @@ def create_app(
             )
         return await call_next(request)
 
-    app.state.config = resolved_config
-    app.state.router = resolved_router
+    app.state.store = store
     app.include_router(health_router)
     app.include_router(router)
+    app.include_router(admin_router)
 
     @app.exception_handler(ApiError)
     async def handle_api_error(request: Request, exc: ApiError) -> JSONResponse:

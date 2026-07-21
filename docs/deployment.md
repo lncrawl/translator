@@ -5,13 +5,15 @@ for the local-model lane. Target: a modest CPU-only VPS (~4 vCPU, 8 GB RAM).
 
 ## Quick start
 
+No config file is needed — the built-in defaults pre-wire every known
+free provider, and an engine activates as soon as its key env var is set:
+
 ```bash
-cp config.example.yml config.yml     # pick your engine lanes
-export ZAI_API_KEY=...               # whichever keys your config references
+export ZAI_API_KEY=...               # whichever keys you have
 export AUTH_TOKEN=...                # optional; omit on a private network
 
 docker compose up -d                 # pulls ghcr.io/lncrawl/translator:latest
-curl http://localhost:8000/health
+curl http://localhost:8000/health    # lists which engines came up
 ```
 
 Prebuilt images (amd64 + arm64) are published to
@@ -19,12 +21,19 @@ Prebuilt images (amd64 + arm64) are published to
 on version tags (`1.2`, `1.2.3`). Use `docker compose up -d --build` to
 build from source instead.
 
-The config file is mounted read-only; editing it only needs a container
-restart, never a rebuild:
+## Customizing the config
 
-```bash
-docker compose restart translator
-```
+Three options, all optional:
+
+- **Runtime config API** (recommended): change providers, engines, routing,
+  or the failure policy over HTTP — see "Runtime config API" below. The
+  first write creates `/data/config.yml` (persisted in the compose volume),
+  which then takes precedence over the built-in defaults on every boot.
+- **Own file**: bind-mount a directory over `/data` with a `config.yml` in
+  it (start from `config.example.yml`), or point `$TRANSLATOR_CONFIG` at a
+  file elsewhere.
+- **Local dev**: a `./config.yml` in the working directory is picked up
+  automatically; without one, the same built-in defaults apply.
 
 ## Engine keys
 
@@ -34,10 +43,11 @@ docker compose restart translator
 | `GEMINI_API_KEY` | https://aistudio.google.com — free tier, volatile quotas |
 | `DEEPL_API_KEY` | https://www.deepl.com/pro-api — Free plan, 500K chars/mo (key ends in `:fx`) |
 
-Add any other OpenAI-compatible provider (Cerebras, Mistral, Groq, DeepSeek,
-ModelScope, OpenRouter…) as a new `kind: openai` entry in `config.yml` with
-its own env var — no code changes. Engines whose key env is unset are
-auto-disabled and shown as such in `GET /engines`.
+The built-in defaults also know `CEREBRAS_API_KEY`, `MISTRAL_API_KEY`,
+`GROQ_API_KEY`, and `OPENROUTER_API_KEY`. Add any other OpenAI-compatible
+provider (DeepSeek, ModelScope…) as a new `kind: openai` provider via the
+config API or config file — no code changes. Engines whose provider key env
+is unset are auto-disabled and shown as such in `GET /engines`.
 
 ## Local model lane (optional)
 
@@ -101,6 +111,63 @@ serves whatever model it loaded regardless of the `model` value sent.
   private network; callers then need `Authorization: Bearer <token>`.
 - `/health` is always unauthenticated (container health checks use it).
 - Don't expose port 8000 publicly without a reverse proxy + TLS.
+
+## Runtime config API
+
+Providers, engines, routing, and the failure policy can be changed at
+runtime — changes are validated as a whole, applied atomically (a new router
+is swapped in; in-flight requests finish on the old one), and written back
+to `config.yml`.
+
+Writes require `Authorization: Bearer $ADMIN_TOKEN` (falls back to
+`AUTH_TOKEN`; when neither is set, writes are disabled with `403`).
+
+```bash
+# Read the live config (regular auth)
+curl -s http://localhost:8000/config
+
+# Swap a model in place
+curl -s -X PATCH http://localhost:8000/engines/zai-glm-flash \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "glm-5-flash"}'
+
+# Add a second model on an existing provider (shares its rate limits)
+curl -s -X POST http://localhost:8000/engines \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"id": "or-qwen", "provider": "openrouter", "model": "qwen/qwen3.5-235b-a22b:free"}'
+
+# Reorder lanes
+curl -s -X PUT http://localhost:8000/routing \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"chapter": ["or-qwen", "zai-glm-flash"], "short_text": ["zai-glm-flash"]}'
+```
+
+Endpoints: `GET /config`, `PUT /config`, `PUT /config/failure-policy`,
+`PUT /routing`, `POST/PATCH/DELETE /providers[/{id}]`,
+`POST/PATCH/DELETE /engines[/{id}]`. Deleting an engine also removes it from
+routing lanes; deleting a provider requires deleting its engines first.
+API keys are never sent through this API — providers reference env var
+names, and keys stay in the environment.
+
+Note: the compose file mounts `config.yml` read-write so API changes
+persist across restarts.
+
+## Failure handling
+
+- **Transient errors** (5xx, timeouts, 429 with a short `Retry-After`):
+  retried on the same engine with exponential backoff
+  (`failure_policy.transient_retries`, default 2).
+- **Quota errors** (long 429, 402, DeepL 456): the whole *provider* is
+  benched until the reset time — all its models skip together.
+- **Repeated failures**: after `failure_threshold` consecutive failed
+  requests (default 3) an engine is benched for `cooldown_seconds`
+  (default 300) instead of being retried first-in-lane on every request.
+- `GET /engines` shows per-engine `status` (`ok`, `quota_exhausted`,
+  `error`, `disabled`) and `retry_at` — when a benched engine is eligible
+  again.
 
 ## Operations
 

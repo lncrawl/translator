@@ -7,7 +7,9 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./config.yml:/app/config.yml:ro
+      # Config API changes persist in this volume.
+      # To provide your own file instead, bind-mount a directory over /data.
+      - translator-data:/data
     environment:
       # Pass through whichever engine keys you have set on the host
       # (every api_key_env referenced in config.example.yml).
@@ -19,6 +21,7 @@ services:
       - OPENROUTER_API_KEY
       - DEEPL_API_KEY
       - AUTH_TOKEN
+      - ADMIN_TOKEN
       - LOG_LEVEL
     restart: unless-stopped
 
@@ -37,3 +40,6 @@ services:
     volumes:
       - ./models:/models:ro
     restart: unless-stopped
+
+volumes:
+  translator-data:

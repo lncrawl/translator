@@ -1,0 +1,179 @@
+"""Runtime config API: auth, CRUD, atomic apply, and YAML persistence."""
+
+from pathlib import Path
+
+import pytest
+import yaml
+from fastapi.testclient import TestClient
+
+from translator.config import AppConfig
+from translator.main import create_app
+
+BASE_CONFIG = {
+    "providers": [
+        {"id": "p1", "kind": "openai", "base_url": "http://one/v1"},
+        {"id": "p2", "kind": "openai", "base_url": "http://two/v1"},
+    ],
+    "engines": [
+        {"id": "e1", "provider": "p1", "model": "m1"},
+        {"id": "e2", "provider": "p2", "model": "m2"},
+    ],
+    "routing": {"chapter": ["e1", "e2"], "short_text": ["e1"]},
+}
+
+AUTH = {"Authorization": "Bearer admin-secret"}
+
+
+@pytest.fixture
+def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
+    monkeypatch.delenv("AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("ADMIN_TOKEN", "admin-secret")
+    config = AppConfig.model_validate(BASE_CONFIG)
+    app = create_app(config, config_path=tmp_path / "config.yml")
+    return TestClient(app)
+
+
+def saved_config(client: TestClient) -> dict:
+    path = Path(str(client.app.state.store._path))  # type: ignore[attr-defined]
+    return yaml.safe_load(path.read_text())
+
+
+def test_writes_disabled_without_any_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+    client = TestClient(create_app(AppConfig.model_validate(BASE_CONFIG)))
+    resp = client.patch("/engines/e1", json={"model": "m9"})
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "config_writes_disabled"
+
+
+def test_auth_token_fallback_guards_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+    monkeypatch.setenv("AUTH_TOKEN", "user-secret")
+    client = TestClient(create_app(AppConfig.model_validate(BASE_CONFIG)))
+    assert client.patch("/engines/e1", json={"model": "m9"}).status_code == 401
+    resp = client.patch(
+        "/engines/e1",
+        json={"model": "m9"},
+        headers={"Authorization": "Bearer user-secret"},
+    )
+    assert resp.status_code == 200
+
+
+def test_admin_token_required_for_writes(client: TestClient) -> None:
+    assert client.patch("/engines/e1", json={"model": "m9"}).status_code == 401
+    resp = client.patch("/engines/e1", json={"model": "m9"}, headers=AUTH)
+    assert resp.status_code == 200
+    assert resp.json()["model"] == "m9"
+
+
+def test_patch_engine_swaps_model_and_persists(client: TestClient) -> None:
+    resp = client.patch("/engines/e1", json={"model": "m1-updated"}, headers=AUTH)
+    assert resp.status_code == 200
+    engines = {e["id"]: e for e in client.get("/engines").json()["engines"]}
+    assert engines["e1"]["model"] == "m1-updated"
+    saved = saved_config(client)
+    assert saved["engines"][0]["model"] == "m1-updated"
+
+
+def test_patch_engine_disable_removes_from_router(client: TestClient) -> None:
+    resp = client.patch("/engines/e1", json={"enabled": False}, headers=AUTH)
+    assert resp.status_code == 200
+    engines = {e["id"]: e for e in client.get("/engines").json()["engines"]}
+    assert engines["e1"]["enabled"] is False
+    assert engines["e1"]["status"] == "disabled"
+
+
+def test_create_engine_on_existing_provider(client: TestClient) -> None:
+    resp = client.post(
+        "/engines",
+        json={"id": "e3", "provider": "p1", "model": "m3"},
+        headers=AUTH,
+    )
+    assert resp.status_code == 201
+    engines = {e["id"]: e for e in client.get("/engines").json()["engines"]}
+    assert engines["e3"]["provider"] == "p1"
+
+
+def test_create_engine_unknown_provider_rejected(client: TestClient) -> None:
+    resp = client.post("/engines", json={"id": "e3", "provider": "ghost"}, headers=AUTH)
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "invalid_config"
+
+
+def test_duplicate_engine_rejected(client: TestClient) -> None:
+    resp = client.post("/engines", json={"id": "e1", "provider": "p1"}, headers=AUTH)
+    assert resp.status_code == 409
+
+
+def test_delete_engine_strips_routing(client: TestClient) -> None:
+    resp = client.delete("/engines/e1", headers=AUTH)
+    assert resp.status_code == 204
+    config = client.get("/config").json()
+    assert config["routing"]["chapter"] == ["e2"]
+    assert config["routing"]["short_text"] == []
+    saved = saved_config(client)
+    assert all(e["id"] != "e1" for e in saved["engines"])
+
+
+def test_delete_provider_in_use_rejected(client: TestClient) -> None:
+    resp = client.delete("/providers/p1", headers=AUTH)
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "provider_in_use"
+
+
+def test_delete_provider_after_engine(client: TestClient) -> None:
+    assert client.delete("/engines/e1", headers=AUTH).status_code == 204
+    assert client.delete("/providers/p1", headers=AUTH).status_code == 204
+    config = client.get("/config").json()
+    assert all(p["id"] != "p1" for p in config["providers"])
+
+
+def test_put_routing_validates_references(client: TestClient) -> None:
+    resp = client.put("/routing", json={"chapter": ["ghost"]}, headers=AUTH)
+    assert resp.status_code == 422
+    resp = client.put(
+        "/routing", json={"chapter": ["e2"], "short_text": ["e2"]}, headers=AUTH
+    )
+    assert resp.status_code == 200
+    assert client.get("/config").json()["routing"]["chapter"] == ["e2"]
+
+
+def test_put_full_config(client: TestClient) -> None:
+    new_config = {
+        "providers": [{"id": "px", "kind": "openai", "base_url": "http://x/v1"}],
+        "engines": [{"id": "ex", "provider": "px", "model": "mx"}],
+        "routing": {"chapter": ["ex"], "short_text": ["ex"]},
+    }
+    resp = client.put("/config", json=new_config, headers=AUTH)
+    assert resp.status_code == 200
+    engines = client.get("/engines").json()["engines"]
+    assert [e["id"] for e in engines] == ["ex"]
+    assert saved_config(client)["engines"][0]["id"] == "ex"
+
+
+def test_update_failure_policy(client: TestClient) -> None:
+    resp = client.put(
+        "/config/failure-policy",
+        json={"failure_threshold": 5, "cooldown_seconds": 120},
+        headers=AUTH,
+    )
+    assert resp.status_code == 200
+    policy = client.get("/config").json()["failure_policy"]
+    assert policy["failure_threshold"] == 5
+    assert policy["cooldown_seconds"] == 120
+
+
+def test_new_router_serves_after_config_change(client: TestClient) -> None:
+    # After a full replace, translation goes through the new engine set.
+    # (Engines here are unreachable, so we just assert routing/validation.)
+    resp = client.put(
+        "/routing", json={"chapter": ["e2"], "short_text": ["e2"]}, headers=AUTH
+    )
+    assert resp.status_code == 200
+    engines = {e["id"]: e for e in client.get("/engines").json()["engines"]}
+    assert engines["e2"]["status"] == "ok"

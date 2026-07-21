@@ -13,10 +13,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 FROM python:3.12-slim-bookworm
-RUN useradd --create-home app
+RUN useradd --create-home app && mkdir /data && chown app:app /data
 WORKDIR /app
 COPY --from=builder /app /app
 ENV PATH="/app/.venv/bin:$PATH"
+ENV TRANSLATOR_CONFIG=/data/config.yml
 USER app
 EXPOSE 8000
 

@@ -1,6 +1,6 @@
 """Translation engine implementations."""
 
-from ..config import EngineConfig
+from ..config import ResolvedEngine
 from .base import (
     Engine,
     EngineCapabilities,
@@ -24,7 +24,7 @@ __all__ = [
 ]
 
 
-def build_engine(config: EngineConfig) -> Engine:
+def build_engine(config: ResolvedEngine) -> Engine:
     if config.kind == "deepl":
         from .deepl import DeepLEngine
 
@@ -34,7 +34,7 @@ def build_engine(config: EngineConfig) -> Engine:
     return OpenAICompatEngine(config)
 
 
-def capabilities_for(config: EngineConfig) -> EngineCapabilities:
+def capabilities_for(config: ResolvedEngine) -> EngineCapabilities:
     """Capabilities from config alone — used to describe disabled engines
     (which are never instantiated) in the /engines listing."""
     if config.kind == "deepl":

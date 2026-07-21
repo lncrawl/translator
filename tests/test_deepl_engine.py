@@ -2,8 +2,8 @@ import json
 
 import httpx
 import pytest
+from helpers import make_resolved
 
-from translator.config import EngineConfig
 from translator.engines.base import EngineError, ErrorKind
 from translator.engines.deepl import DeepLEngine
 
@@ -12,7 +12,9 @@ def make_engine(
     handler: httpx.MockTransport, monkeypatch: pytest.MonkeyPatch
 ) -> DeepLEngine:
     monkeypatch.setenv("DEEPL_TEST_KEY", "secret:fx")
-    config = EngineConfig(id="deepl", kind="deepl", api_key_env="DEEPL_TEST_KEY")
+    config = make_resolved(
+        "deepl", kind="deepl", base_url=None, api_key_env="DEEPL_TEST_KEY"
+    )
     engine = DeepLEngine(config)
     engine._client = httpx.AsyncClient(
         base_url="https://api-free.deepl.com", transport=handler
@@ -24,7 +26,9 @@ async def test_free_key_selects_free_base_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("DEEPL_TEST_KEY", "secret:fx")
-    config = EngineConfig(id="deepl", kind="deepl", api_key_env="DEEPL_TEST_KEY")
+    config = make_resolved(
+        "deepl", kind="deepl", base_url=None, api_key_env="DEEPL_TEST_KEY"
+    )
     engine = DeepLEngine(config)
     assert str(engine._client.base_url).startswith("https://api-free.deepl.com")
     await engine.close()

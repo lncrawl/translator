@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal, TypeVar
 
-from .config import AppConfig, EngineConfig
+from .config import AppConfig, ProviderConfig
 from .detect import detect_language
 from .engines.base import Engine, EngineError, EngineStatus, ErrorKind, HtmlSupport
 from .errors import ApiError
@@ -38,20 +38,19 @@ T = TypeVar("T")
 
 
 @dataclass
-class _Runtime:
-    engine: Engine
-    config: EngineConfig
+class _ProviderRuntime:
+    """Shared per-account state: every engine on the provider throttles,
+    queues, and exhausts quota together."""
+
+    config: ProviderConfig
     semaphore: asyncio.Semaphore
     min_interval: float
     rate_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     next_allowed: float = 0.0
     quota_resets_at: datetime | None = None
-    last_error: str | None = None
 
-    def status(self, now: datetime) -> EngineStatus:
-        if self.quota_resets_at and now < self.quota_resets_at:
-            return EngineStatus.QUOTA_EXHAUSTED
-        return EngineStatus.OK
+    def quota_blocked(self, now: datetime) -> bool:
+        return self.quota_resets_at is not None and now < self.quota_resets_at
 
     async def throttle(self) -> None:
         async with self.rate_lock:
@@ -62,7 +61,31 @@ class _Runtime:
             await asyncio.sleep(wait)
 
 
-def _min_interval(config: EngineConfig) -> float:
+@dataclass
+class _EngineRuntime:
+    engine: Engine
+    provider: _ProviderRuntime
+    consecutive_failures: int = 0
+    cooldown_until: datetime | None = None
+    last_error: str | None = None
+
+    def status(self, now: datetime) -> EngineStatus:
+        if self.provider.quota_blocked(now):
+            return EngineStatus.QUOTA_EXHAUSTED
+        if self.cooldown_until and now < self.cooldown_until:
+            return EngineStatus.ERROR
+        return EngineStatus.OK
+
+    def retry_at(self, now: datetime) -> datetime | None:
+        """When this engine becomes eligible again, if currently blocked."""
+        if self.provider.quota_blocked(now):
+            return self.provider.quota_resets_at
+        if self.cooldown_until and now < self.cooldown_until:
+            return self.cooldown_until
+        return None
+
+
+def _min_interval(config: ProviderConfig) -> float:
     if config.rps:
         return 1.0 / config.rps
     if config.rpm:
@@ -76,22 +99,37 @@ class Router:
         engines: list[Engine],
         config: AppConfig,
         *,
-        transient_retries: int = 2,
-        backoff_base_seconds: float = 2.0,
+        transient_retries: int | None = None,
+        backoff_base_seconds: float | None = None,
     ) -> None:
+        policy = config.failure_policy
         self._config = config
-        self._transient_retries = transient_retries
-        self._backoff_base = backoff_base_seconds
-        self._runtimes: dict[str, _Runtime] = {}
+        self._transient_retries = (
+            policy.transient_retries if transient_retries is None else transient_retries
+        )
+        self._backoff_base = (
+            policy.backoff_base_seconds
+            if backoff_base_seconds is None
+            else backoff_base_seconds
+        )
+        self._failure_threshold = policy.failure_threshold
+        self._cooldown_seconds = policy.cooldown_seconds
+        self._providers: dict[str, _ProviderRuntime] = {}
+        self._runtimes: dict[str, _EngineRuntime] = {}
         for engine in engines:
-            engine_config = config.engine(engine.id)
-            assert engine_config is not None
-            self._runtimes[engine.id] = _Runtime(
-                engine=engine,
-                config=engine_config,
-                semaphore=asyncio.Semaphore(engine_config.max_concurrency),
-                min_interval=_min_interval(engine_config),
-            )
+            resolved = config.resolved(engine.id)
+            assert resolved is not None
+            provider_config = config.provider(resolved.provider_id)
+            assert provider_config is not None
+            provider = self._providers.get(provider_config.id)
+            if provider is None:
+                provider = _ProviderRuntime(
+                    config=provider_config,
+                    semaphore=asyncio.Semaphore(provider_config.max_concurrency),
+                    min_interval=_min_interval(provider_config),
+                )
+                self._providers[provider_config.id] = provider
+            self._runtimes[engine.id] = _EngineRuntime(engine=engine, provider=provider)
 
     def status(self, engine_id: str) -> EngineStatus | None:
         runtime = self._runtimes.get(engine_id)
@@ -99,9 +137,10 @@ class Router:
             return None
         return runtime.status(datetime.now(UTC))
 
-    def quota_resets_at(self, engine_id: str) -> datetime | None:
+    def retry_at(self, engine_id: str) -> datetime | None:
+        """When a quota-exhausted or cooling-down engine is eligible again."""
         runtime = self._runtimes.get(engine_id)
-        return runtime.quota_resets_at if runtime else None
+        return runtime.retry_at(datetime.now(UTC)) if runtime else None
 
     async def close(self) -> None:
         for runtime in self._runtimes.values():
@@ -109,7 +148,7 @@ class Router:
 
     # -- candidate selection ------------------------------------------------
 
-    def _candidates(self, task: TaskKind, override: str | None) -> list[_Runtime]:
+    def _candidates(self, task: TaskKind, override: str | None) -> list[_EngineRuntime]:
         if override is not None:
             runtime = self._runtimes.get(override)
             if runtime is None:
@@ -121,7 +160,8 @@ class Router:
                 raise ApiError(
                     503,
                     "engine_disabled",
-                    f"engine {override!r} is disabled (missing api key)",
+                    f"engine {override!r} is disabled"
+                    " (disabled in config or missing api key)",
                 )
             return [runtime]
         lane: list[str] = getattr(self._config.routing, task)
@@ -140,49 +180,71 @@ class Router:
         override: str | None,
         fn: Callable[[Engine], Awaitable[T]],
     ) -> tuple[T, str]:
-        """Try candidates in lane order; retry transient errors per engine."""
+        """Try candidates in lane order; retry transient errors per engine.
+
+        Quota errors bench the whole provider until its reset; repeated
+        failures of any other kind bench the engine for a cooldown period.
+        """
         candidates = self._candidates(task, override)
         now = datetime.now(UTC)
-        quota_blocked: list[_Runtime] = []
+        blocked: list[_EngineRuntime] = []
         last_error: EngineError | None = None
 
         for runtime in candidates:
-            if runtime.status(now) is EngineStatus.QUOTA_EXHAUSTED:
-                quota_blocked.append(runtime)
+            if runtime.status(now) is not EngineStatus.OK:
+                blocked.append(runtime)
                 continue
             try:
                 result = await self._run_on_engine(runtime, fn)
+                runtime.consecutive_failures = 0
+                runtime.cooldown_until = None
                 return result, runtime.engine.id
             except EngineError as exc:
                 last_error = exc
                 runtime.last_error = str(exc)
                 if exc.kind is ErrorKind.QUOTA:
                     seconds = exc.retry_after_seconds or _DEFAULT_QUOTA_RESET_SECONDS
-                    runtime.quota_resets_at = datetime.now(UTC) + timedelta(
+                    runtime.provider.quota_resets_at = datetime.now(UTC) + timedelta(
                         seconds=seconds
                     )
-                    quota_blocked.append(runtime)
+                    blocked.append(runtime)
                     logger.warning(
-                        "engine %s quota exhausted: %s", runtime.engine.id, exc
+                        "provider %s quota exhausted (via engine %s): %s",
+                        runtime.provider.config.id,
+                        runtime.engine.id,
+                        exc,
                     )
                 else:
-                    logger.warning("engine %s failed: %s", runtime.engine.id, exc)
+                    runtime.consecutive_failures += 1
+                    if runtime.consecutive_failures >= self._failure_threshold:
+                        runtime.cooldown_until = datetime.now(UTC) + timedelta(
+                            seconds=self._cooldown_seconds
+                        )
+                        logger.warning(
+                            "engine %s benched for %.0fs after %d consecutive"
+                            " failures: %s",
+                            runtime.engine.id,
+                            self._cooldown_seconds,
+                            runtime.consecutive_failures,
+                            exc,
+                        )
+                    else:
+                        logger.warning("engine %s failed: %s", runtime.engine.id, exc)
 
-        if quota_blocked:
-            resets = [
-                r.quota_resets_at
-                for r in quota_blocked
-                if r.quota_resets_at is not None
-            ]
+        if blocked:
+            now = datetime.now(UTC)
+            resets = [r.retry_at(now) for r in blocked]
+            valid = [r for r in resets if r is not None]
             retry_after = (
-                max(1, int((min(resets) - datetime.now(UTC)).total_seconds()))
-                if resets
+                max(1, int((min(valid) - now).total_seconds()))
+                if valid
                 else _DEFAULT_QUOTA_RESET_SECONDS
             )
             raise ApiError(
                 503,
                 "all_engines_exhausted",
-                "all eligible engines are quota-exhausted",
+                "all eligible engines are quota-exhausted or cooling down"
+                " after repeated failures",
                 retry_after_seconds=retry_after,
             )
         raise ApiError(
@@ -192,12 +254,12 @@ class Router:
         )
 
     async def _run_on_engine(
-        self, runtime: _Runtime, fn: Callable[[Engine], Awaitable[T]]
+        self, runtime: _EngineRuntime, fn: Callable[[Engine], Awaitable[T]]
     ) -> T:
         attempts = 1 + self._transient_retries
         for attempt in range(attempts):
-            async with runtime.semaphore:
-                await runtime.throttle()
+            async with runtime.provider.semaphore:
+                await runtime.provider.throttle()
                 try:
                     return await fn(runtime.engine)
                 except EngineError as exc:

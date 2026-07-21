@@ -45,12 +45,12 @@ def require_auth(
 
 
 def _config(request: Request) -> AppConfig:
-    config: AppConfig = request.app.state.config
+    config: AppConfig = request.app.state.store.config
     return config
 
 
 def _router(request: Request) -> Router:
-    engine_router: Router = request.app.state.router
+    engine_router: Router = request.app.state.store.router
     return engine_router
 
 
@@ -66,8 +66,14 @@ def root() -> dict[str, str]:
 @health_router.get("/health")
 def health(request: Request) -> dict[str, object]:
     config = _config(request)
-    usable = [e.id for e in config.engines if e.enabled]
+    usable = [r.id for r in config.resolved_engines() if r.available]
     return {"status": "ok" if usable else "unconfigured", "engines_enabled": usable}
+
+
+@router.get("/config")
+def get_config(request: Request) -> AppConfig:
+    """The live config; keys are env var names, never secret values."""
+    return _config(request)
 
 
 @router.get("/engines")
@@ -75,21 +81,23 @@ def list_engines(request: Request) -> EnginesResponse:
     config = _config(request)
     engine_router = _router(request)
     infos = []
-    for engine in config.engines:
-        caps = capabilities_for(engine)
-        status = engine_router.status(engine.id) or EngineStatus.DISABLED
+    for resolved in config.resolved_engines():
+        caps = capabilities_for(resolved)
+        status = engine_router.status(resolved.id) or EngineStatus.DISABLED
         infos.append(
             EngineInfo(
-                id=engine.id,
-                kind=engine.kind,
-                model=engine.model,
+                id=resolved.id,
+                provider=resolved.provider_id,
+                kind=resolved.kind,
+                model=resolved.model,
+                enabled=resolved.enabled,
                 capabilities=EngineCapabilitiesInfo(
                     html=caps.html.value,
                     glossary=caps.glossary,
                     max_input_tokens=caps.max_input_tokens,
                 ),
                 status=status.value,
-                quota_resets_at=engine_router.quota_resets_at(engine.id),
+                retry_at=engine_router.retry_at(resolved.id),
             )
         )
     return EnginesResponse(engines=infos)

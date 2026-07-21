@@ -50,11 +50,14 @@ class EngineCapabilitiesInfo(BaseModel):
 
 class EngineInfo(BaseModel):
     id: str
+    provider: str
     kind: EngineKind
     model: str | None = None
+    enabled: bool = True
     capabilities: EngineCapabilitiesInfo
     status: EngineStatusLiteral
-    quota_resets_at: datetime | None = None
+    # When a quota-exhausted or cooling-down engine becomes eligible again.
+    retry_at: datetime | None = None
 
 
 class EnginesResponse(BaseModel):
