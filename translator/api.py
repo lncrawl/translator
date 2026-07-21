@@ -10,8 +10,9 @@ from fastapi import APIRouter, Depends, Header, Request
 
 from .config import AppConfig
 from .detect import detect_language
-from .engines import capabilities_for
+from .engines import EngineStatus, capabilities_for
 from .errors import ApiError
+from .router import Router
 from .schemas import (
     DetectionResult,
     DetectRequest,
@@ -20,7 +21,9 @@ from .schemas import (
     EngineInfo,
     EnginesResponse,
     TranslateHtmlRequest,
+    TranslateHtmlResponse,
     TranslateTextRequest,
+    TranslateTextResponse,
 )
 
 AUTH_TOKEN_ENV = "AUTH_TOKEN"
@@ -43,6 +46,11 @@ def _config(request: Request) -> AppConfig:
     return config
 
 
+def _router(request: Request) -> Router:
+    engine_router: Router = request.app.state.router
+    return engine_router
+
+
 health_router = APIRouter()
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -57,9 +65,11 @@ def health(request: Request) -> dict[str, object]:
 @router.get("/engines")
 def list_engines(request: Request) -> EnginesResponse:
     config = _config(request)
+    engine_router = _router(request)
     infos = []
     for engine in config.engines:
         caps = capabilities_for(engine)
+        status = engine_router.status(engine.id) or EngineStatus.DISABLED
         infos.append(
             EngineInfo(
                 id=engine.id,
@@ -70,7 +80,8 @@ def list_engines(request: Request) -> EnginesResponse:
                     glossary=caps.glossary,
                     max_input_tokens=caps.max_input_tokens,
                 ),
-                status="ok" if engine.enabled else "disabled",
+                status=status.value,
+                quota_resets_at=engine_router.quota_resets_at(engine.id),
             )
         )
     return EnginesResponse(engines=infos)
@@ -86,10 +97,14 @@ def detect(payload: DetectRequest) -> DetectResponse:
 
 
 @router.post("/translate/text")
-def translate_text(payload: TranslateTextRequest, request: Request) -> None:
-    raise ApiError(501, "not_implemented", "text translation lands in a later part")
+async def translate_text(
+    payload: TranslateTextRequest, request: Request
+) -> TranslateTextResponse:
+    return await _router(request).translate_text(payload)
 
 
 @router.post("/translate/html")
-def translate_html(payload: TranslateHtmlRequest, request: Request) -> None:
-    raise ApiError(501, "not_implemented", "HTML translation lands in a later part")
+async def translate_html(
+    payload: TranslateHtmlRequest, request: Request
+) -> TranslateHtmlResponse:
+    return await _router(request).translate_html(payload)

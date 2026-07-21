@@ -45,9 +45,15 @@ class HtmlResult:
 
 
 class EngineError(Exception):
-    def __init__(self, message: str, kind: ErrorKind) -> None:
+    def __init__(
+        self,
+        message: str,
+        kind: ErrorKind,
+        retry_after_seconds: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.kind = kind
+        self.retry_after_seconds = retry_after_seconds
 
 
 class Engine(abc.ABC):

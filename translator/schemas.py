@@ -23,8 +23,12 @@ class DetectResponse(BaseModel):
     results: list[DetectionResult]
 
 
+HtmlSupportLiteral = Literal["native", "prompt", "none"]
+EngineStatusLiteral = Literal["ok", "throttled", "quota_exhausted", "error", "disabled"]
+
+
 class EngineCapabilitiesInfo(BaseModel):
-    html: Literal["native", "prompt", "none"]
+    html: HtmlSupportLiteral
     glossary: bool
     max_input_tokens: int | None = None
 
@@ -34,7 +38,7 @@ class EngineInfo(BaseModel):
     kind: EngineKind
     model: str | None = None
     capabilities: EngineCapabilitiesInfo
-    status: Literal["ok", "throttled", "quota_exhausted", "error", "disabled"]
+    status: EngineStatusLiteral
     quota_resets_at: datetime | None = None
 
 
