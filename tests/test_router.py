@@ -137,6 +137,17 @@ async def test_large_chapter_is_chunked() -> None:
     assert any("2 chunks" in w for w in resp.warnings)
 
 
+async def test_chunk_tokens_overrides_default_budget() -> None:
+    # Default budget would fit both paragraphs in one call; the explicit
+    # chunk_tokens forces a split.
+    engine = FakeEngine("a", chunk_tokens=300)
+    router = make_router(engine)
+    html = f"<p>{'好' * 500}</p><p>{'吗' * 500}</p>"
+    resp = await router.translate_html(TranslateHtmlRequest(html=html))
+    assert len(engine.html_calls) == 2
+    assert any("2 chunks" in w for w in resp.warnings)
+
+
 async def test_glossary_unsupported_engine_warns() -> None:
     engine = FakeEngine("a", glossary=False)
     router = make_router(engine)

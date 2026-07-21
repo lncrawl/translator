@@ -13,7 +13,7 @@ import httpx
 
 from .. import prompts
 from ..config import EngineConfig
-from ..html_tools import repair_untagged_output, tag_names
+from ..html_tools import count_cjk, repair_untagged_output, strip_text, tag_names
 from ..schemas import HtmlContext
 from .base import (
     Engine,
@@ -26,6 +26,9 @@ from .base import (
 
 # A 429 asking for a short pause is throttling; a long one is quota.
 _THROTTLE_CUTOFF_SECONDS = 60
+
+# Target languages where CJK characters in the output are expected.
+_CJK_TARGETS = {"zh", "zh-cn", "zh-tw", "zh-hans", "zh-hant", "ja", "ko"}
 
 _TIMEOUT = httpx.Timeout(connect=15.0, read=900.0, write=60.0, pool=60.0)
 
@@ -55,12 +58,15 @@ class OpenAICompatEngine(Engine):
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def _chat(self, messages: list[dict[str, str]]) -> str:
+    async def _chat(
+        self, messages: list[dict[str, str]], temperature: float = 0.3
+    ) -> str:
         payload: dict[str, Any] = {
             "model": self.config.model,
             "messages": messages,
-            "temperature": 0.3,
+            "temperature": temperature,
             "stream": False,
+            **self.config.extra_body,
         }
         try:
             response = await self._client.post("/chat/completions", json=payload)
@@ -134,12 +140,31 @@ class OpenAICompatEngine(Engine):
             context=context,
             extract_terms=extract_terms,
         )
-        raw = await self._chat(messages)
-        translated, new_terms = prompts.parse_html_response(raw)
-        if not translated.strip():
+        # Small models sometimes code-switch mid-word ("re凝聚"). When any
+        # CJK survives in non-CJK output, regenerate once (slightly hotter
+        # for diversity) and keep the attempt that leaks least.
+        check_leak = target_lang.lower() not in _CJK_TARGETS
+        best: tuple[int, str, dict[str, str]] | None = None
+        for temperature in (0.3, 0.6):
+            raw = await self._chat(messages, temperature=temperature)
+            translated, new_terms = prompts.parse_html_response(raw)
+            if not translated.strip():
+                continue
+            leaked = count_cjk(strip_text(translated)) if check_leak else 0
+            if best is None or leaked < best[0]:
+                best = (leaked, translated, new_terms)
+            if leaked == 0:
+                break
+        if best is None:
             raise EngineError(f"{self.id}: empty translation", ErrorKind.TRANSIENT)
+        leaked, translated, new_terms = best
 
         warnings: list[str] = []
+        if leaked > 0:
+            warnings.append(
+                f"{leaked} untranslated CJK characters remain in the output"
+                " (after one retry)"
+            )
         if tag_names(translated) != tag_names(html):
             repaired = repair_untagged_output(html, translated)
             if repaired is not None:
@@ -147,7 +172,15 @@ class OpenAICompatEngine(Engine):
                 warnings.append("engine returned plain text; paragraphs re-wrapped")
             else:
                 warnings.append("tag structure differs from source")
-        new_terms = {k: v for k, v in new_terms.items() if k not in glossary}
+        # Keys must be terms that literally occur in the source: this drops
+        # already-known glossary entries and hallucinated or already-translated
+        # keys (e.g. "Chaos Body": "Chaos Body") that would poison the
+        # caller's glossary.
+        new_terms = {
+            k: v
+            for k, v in new_terms.items()
+            if k not in glossary and k != v and k in html
+        }
         return HtmlResult(html=translated, new_terms=new_terms, warnings=warnings)
 
 

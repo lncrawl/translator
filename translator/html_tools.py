@@ -19,8 +19,12 @@ _CJK = re.compile(r"[㐀-䶿一-鿿豈-﫿぀-ヿㇰ-ㇿｦ-ﾟ가-힯]")
 
 def estimate_tokens(text: str) -> int:
     """Rough token estimate: CJK ≈ 1 token/char, other text ≈ 1 token/4 chars."""
-    cjk = len(_CJK.findall(text))
+    cjk = count_cjk(text)
     return cjk + (len(text) - cjk) // 4 + 1
+
+
+def count_cjk(text: str) -> int:
+    return len(_CJK.findall(text))
 
 
 def strip_text(html: str) -> str:

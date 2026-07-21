@@ -18,6 +18,12 @@ _LANG_NAMES = {
 _FENCE = re.compile(r"^\s*```[a-zA-Z]*\s*|\s*```\s*$")
 _TRANSLATION_BLOCK = re.compile(r"<TRANSLATION>\s*(.*?)\s*</TRANSLATION>", re.DOTALL)
 _NEW_TERMS_BLOCK = re.compile(r"<NEW_TERMS>\s*(.*?)\s*</NEW_TERMS>", re.DOTALL)
+# Reasoning models may prepend chain-of-thought despite instructions.
+_THINK_BLOCK = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def strip_reasoning(raw: str) -> str:
+    return _THINK_BLOCK.sub("", raw)
 
 
 def lang_name(code: str | None) -> str:
@@ -83,7 +89,7 @@ def build_text_messages(
 
 def parse_text_response(raw: str, expected: int) -> list[str]:
     """Parse the JSON array reply. Raises ValueError on shape mismatch."""
-    cleaned = _strip_fences(raw)
+    cleaned = _strip_fences(strip_reasoning(raw))
     start, end = cleaned.find("["), cleaned.rfind("]")
     if start == -1 or end <= start:
         raise ValueError("no JSON array in engine response")
@@ -124,8 +130,10 @@ def build_html_messages(
             "\n6. After the translation, output <NEW_TERMS>{...}</NEW_TERMS>"
             " containing a JSON object of proper nouns you encountered that are"
             " NOT in the glossary (characters, places, organizations, techniques,"
-            " titles), mapping the source term to the translation you chose."
-            " Use {} if there are none."
+            " titles). Each key MUST be the term exactly as written in the"
+            " untranslated source text; each value is the translation you chose"
+            ' — for example {"萧炎": "Xiao Yan", "斗气大陆": "Dou Qi Continent"}.'
+            " Never use a translated term as a key. Use {} if there are none."
         )
 
     parts: list[str] = []
@@ -159,6 +167,7 @@ def parse_html_response(raw: str) -> tuple[str, dict[str, str]]:
     Lenient: missing markers fall back to the whole reply; unparseable
     NEW_TERMS yields {} — term extraction must never fail a translation.
     """
+    raw = strip_reasoning(raw)
     new_terms: dict[str, str] = {}
     terms_match = _NEW_TERMS_BLOCK.search(raw)
     if terms_match:

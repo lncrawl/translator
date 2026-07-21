@@ -50,3 +50,14 @@ def test_parse_html_response_bad_terms_json_is_lenient() -> None:
     html, terms = parse_html_response(raw)
     assert html == "<p>Hi</p>"
     assert terms == {}
+
+
+def test_reasoning_blocks_stripped() -> None:
+    raw = (
+        "<think>Let me consider the translation...</think>\n"
+        "<TRANSLATION><p>Hello</p></TRANSLATION>"
+    )
+    html, _ = parse_html_response(raw)
+    assert html == "<p>Hello</p>"
+
+    assert parse_text_response('<think>hmm</think>["a"]', expected=1) == ["a"]

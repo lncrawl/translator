@@ -42,6 +42,32 @@ async def test_translate_segments() -> None:
     assert "你好" in body["messages"][1]["content"]
 
 
+async def test_extra_body_merged_into_request() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return completion('["hi"]')
+
+    config = EngineConfig(
+        id="test",
+        kind="openai",
+        base_url="http://fake/v1",
+        model="test-model",
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
+    engine = OpenAICompatEngine(config)
+    engine._client = httpx.AsyncClient(
+        base_url="http://fake/v1", transport=httpx.MockTransport(handler)
+    )
+    await engine.translate_segments(
+        ["你好"], source_lang="zh", target_lang="en", glossary={}
+    )
+    body = seen["body"]
+    assert isinstance(body, dict)
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+
 async def test_translate_segments_bad_reply_is_transient() -> None:
     engine = make_engine(
         httpx.MockTransport(lambda _: completion("I refuse to answer."))
@@ -69,6 +95,82 @@ async def test_translate_html_with_markers_and_terms() -> None:
     # Terms already in the glossary are dropped from new_terms.
     assert result.new_terms == {"药老": "Yao Lao"}
     assert result.warnings == []
+
+
+async def test_translate_html_drops_invalid_new_terms() -> None:
+    reply = (
+        "<TRANSLATION><p>Xiao Yan entered the Heavenly Punishment Forest.</p>"
+        "</TRANSLATION>"
+        '<NEW_TERMS>{"天罚森林": "Heavenly Punishment Forest",'
+        ' "Chaos Body": "Chaos Body",'
+        ' "Imperial Bone": "Imperial Bone"}</NEW_TERMS>'
+    )
+    engine = make_engine(httpx.MockTransport(lambda _: completion(reply)))
+    result = await engine.translate_html(
+        "<p>萧炎走进了天罚森林。</p>",
+        source_lang="zh",
+        target_lang="en",
+        glossary={"萧炎": "Xiao Yan"},
+    )
+    # Only keys that literally occur in the source survive; identity pairs
+    # and translated-English keys are dropped.
+    assert result.new_terms == {"天罚森林": "Heavenly Punishment Forest"}
+
+
+async def test_translate_html_retries_on_cjk_leak_then_warns() -> None:
+    reply = (
+        "<TRANSLATION><p>The blood wheel began to re凝聚起来 above his"
+        " head.</p></TRANSLATION>"
+    )
+    calls: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(json.loads(request.content)["temperature"])
+        return completion(reply)
+
+    engine = make_engine(httpx.MockTransport(handler))
+    result = await engine.translate_html(
+        "<p>血轮开始重新凝聚起来。</p>",
+        source_lang="zh",
+        target_lang="en",
+        glossary={},
+    )
+    # One regeneration at higher temperature, then an honest warning.
+    assert calls == [0.3, 0.6]
+    assert any("untranslated CJK" in w for w in result.warnings)
+
+
+async def test_translate_html_retry_recovers_from_cjk_leak() -> None:
+    replies = iter(
+        [
+            "<TRANSLATION><p>It began to re凝聚 above his head.</p></TRANSLATION>",
+            "<TRANSLATION><p>It began to recondense above his head.</p></TRANSLATION>",
+        ]
+    )
+    engine = make_engine(httpx.MockTransport(lambda _: completion(next(replies))))
+    result = await engine.translate_html(
+        "<p>血轮开始重新凝聚。</p>",
+        source_lang="zh",
+        target_lang="en",
+        glossary={},
+    )
+    assert result.html == "<p>It began to recondense above his head.</p>"
+    assert result.warnings == []
+
+
+async def test_translate_html_clean_output_needs_no_retry() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return completion("<TRANSLATION><p>Hello there.</p></TRANSLATION>")
+
+    engine = make_engine(httpx.MockTransport(handler))
+    result = await engine.translate_html(
+        "<p>你好。</p>", source_lang="zh", target_lang="en", glossary={}
+    )
+    assert result.html == "<p>Hello there.</p>"
+    assert len(calls) == 1
 
 
 async def test_translate_html_plain_text_reply_is_repaired() -> None:

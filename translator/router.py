@@ -260,7 +260,9 @@ class Router:
                 return result.html, result.new_terms, result.warnings
 
             budget = capabilities.max_input_tokens or _DEFAULT_CONTEXT_TOKENS
-            max_source_tokens = max(1000, int(budget * _SOURCE_BUDGET_FRACTION))
+            max_source_tokens = engine.config.chunk_tokens or max(
+                1000, int(budget * _SOURCE_BUDGET_FRACTION)
+            )
             chunks = chunk_html(request.html, max_source_tokens)
 
             parts: list[str] = []

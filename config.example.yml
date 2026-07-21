@@ -77,12 +77,20 @@ engines:
   #   monthly_chars: 500000
 
   # Local llama.cpp sidecar from compose (no api key; see docs/deployment.md).
+  # For hybrid-thinking models (e.g. Qwen3.x), extra_body disables the
+  # reasoning phase — without it every request burns thousands of hidden
+  # thinking tokens first.
   # - id: local-qwen
   #   kind: openai
   #   base_url: http://llamacpp:8080/v1
   #   model: qwen3.5-4b
   #   max_concurrency: 1
   #   max_input_tokens: 8000
+  #   # use short chunks stay coherent on long passages.
+  #   chunk_tokens: 1200
+  #   extra_body:
+  #     chat_template_kwargs:
+  #       enable_thinking: false
 
 # Lanes are tried in order; quota-exhausted engines are skipped until reset.
 routing:

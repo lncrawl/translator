@@ -23,11 +23,17 @@ class FakeEngine(Engine):
         html_support: HtmlSupport = HtmlSupport.PROMPT,
         glossary: bool = True,
         max_input_tokens: int | None = None,
+        chunk_tokens: int | None = None,
         errors: list[Exception] | None = None,
         new_terms: dict[str, str] | None = None,
     ) -> None:
         super().__init__(
-            EngineConfig(id=engine_id, kind="openai", base_url="http://fake")
+            EngineConfig(
+                id=engine_id,
+                kind="openai",
+                base_url="http://fake",
+                chunk_tokens=chunk_tokens,
+            )
         )
         self._caps = EngineCapabilities(
             html=html_support, glossary=glossary, max_input_tokens=max_input_tokens

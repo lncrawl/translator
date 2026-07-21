@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -25,7 +25,15 @@ class EngineConfig(BaseModel):
     rpm: float | None = Field(default=None, gt=0)
     max_concurrency: int = Field(default=1, ge=1)
     max_input_tokens: int | None = Field(default=None, gt=0)
+    # Max source tokens per HTML chunk; defaults to a fraction of
+    # max_input_tokens. Lower it for small local models, which stay
+    # coherent on shorter passages.
+    chunk_tokens: int | None = Field(default=None, gt=0)
     monthly_chars: int | None = Field(default=None, gt=0)
+    # Extra fields merged into every chat completion request — e.g.
+    # {chat_template_kwargs: {enable_thinking: false}} to stop hybrid
+    # reasoning models from burning tokens on thinking.
+    extra_body: dict[str, Any] = {}
 
     @property
     def api_key(self) -> str | None:

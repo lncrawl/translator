@@ -61,13 +61,35 @@ auto-disabled and shown as such in `GET /engines`.
 
 Tuning for a small VPS:
 
-- `--threads` should equal your vCPU count (compose default: 4).
+- `--threads` should equal your **physical** core count (compose default: 4).
 - `--ctx-size 8192` fits a chapter + glossary; the router chunks anything
   bigger.
-- Expect roughly 8–12 tok/s → ~5–6 min per chapter → ~250 chapters/day.
+- Prefer the **MTP variant GGUF** (e.g. `unsloth/Qwen3.5-4B-MTP-GGUF`):
+  llama.cpp uses the multi-token-prediction head as built-in speculative
+  decoding for a 1.4–2x decode speedup at identical quality.
+- Add `-fa` (flash attention) and `--cache-type-k q8_0 --cache-type-v q8_0`
+  for modest extra speed and lower RAM.
+- Expect very roughly 10–25 tok/s → ~2–5 min per chapter → 300–800
+  chapters/day. That is the local lane's job: slow, free, always available.
 - A 9B model at Q4 (~6.5 GB) also fits but leaves little headroom next to
   the service; only use it if nothing else runs on the box. Benchmark first
   with `llama-bench` before committing to a model.
+
+Note for local testing on a Mac: Docker on macOS runs in a VM and Apple
+offers no Metal passthrough, so llama.cpp inside compose is CPU-only and
+slow. Two GPU-accelerated alternatives:
+
+- **Native llama-server**: `brew install llama.cpp`, then
+  `llama-server -m model.gguf -ngl 99 --port 8080` uses Metal directly —
+  typically several times faster. Point the engine's `base_url` at
+  `http://host.docker.internal:8080/v1` from compose, or
+  `http://localhost:8080/v1` when running the translator via
+  `uv run poe dev`.
+- **Docker Model Runner**: enable it in Docker Desktop (Features → Docker
+  Model Runner), `docker model pull` a model, and add an engine with
+  `base_url: http://model-runner.docker.internal/engines/v1`. It runs
+  llama.cpp on the host with Metal (outside the VM) while staying
+  addressable from containers.
 
 The service reaches the sidecar at `http://llamacpp:8080/v1` (already the
 `base_url` of the commented-out engine in the example config). llama.cpp
