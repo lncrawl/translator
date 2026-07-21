@@ -1,0 +1,37 @@
+# Copy to config.yml (or point $TRANSLATOR_CONFIG at it) and set the key
+# env vars you have. Engines whose api_key_env is unset auto-disable.
+engines:
+  - id: zai-glm-flash
+    kind: openai
+    base_url: https://api.z.ai/api/paas/v4
+    api_key_env: ZAI_API_KEY
+    model: glm-4.7-flash
+    rps: 1
+    max_concurrency: 1
+    max_input_tokens: 200000
+
+  - id: gemini-flash
+    kind: openai
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    model: gemini-2.5-flash
+    rpm: 10
+    max_concurrency: 2
+    max_input_tokens: 250000
+
+  - id: deepl
+    kind: deepl
+    api_key_env: DEEPL_API_KEY
+    monthly_chars: 500000
+
+  # Optional local lane: llama.cpp server from compose (no api key needed).
+  # - id: local-qwen
+  #   kind: openai
+  #   base_url: http://llamacpp:8080/v1
+  #   model: qwen3.5-4b
+  #   max_concurrency: 1
+  #   max_input_tokens: 8000
+
+routing:
+  chapter: [zai-glm-flash, gemini-flash]
+  short_text: [zai-glm-flash, gemini-flash, deepl]

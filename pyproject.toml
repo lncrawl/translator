@@ -1,0 +1,50 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+name = "translator"
+version = "0.1.0"
+description = "Stateless web-novel translation service with switchable engines"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "beautifulsoup4>=4.12",
+  "fastapi[standard]>=0.115",
+  "httpx>=0.27",
+  "lingua-language-detector>=2.0",
+  "pydantic>=2.7",
+  "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.11",
+  "pytest>=8.0",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.6",
+  "types-pyyaml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["translator"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["translator"]
+
+[[tool.mypy.overrides]]
+module = ["bs4.*", "lingua.*"]
+ignore_missing_imports = true
