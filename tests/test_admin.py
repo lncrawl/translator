@@ -89,8 +89,6 @@ def test_patch_engine_disable_removes_from_router(client: TestClient) -> None:
 
 
 def test_provider_key_set_remotely_enables_engines(client: TestClient) -> None:
-    # The deploy-then-configure flow: clearing a provider's key disables its
-    # engines; patching a key in re-enables them and persists to the file.
     resp = client.patch("/providers/p1", json={"api_key": None}, headers=AUTH)
     assert resp.status_code == 200
     engines = {e["id"]: e for e in client.get("/engines").json()["engines"]}

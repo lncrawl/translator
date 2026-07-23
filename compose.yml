@@ -7,17 +7,15 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Config API changes and the downloaded NLLB fallback model persist
-      # in this volume. To provide your own config file instead, bind-mount
-      # a directory over /data.
+      # Holds config.yml and the downloaded NLLB model; bind-mount a
+      # directory over /data to provide your own config.
       - translator-data:/data
     environment:
-      # Provider API keys are configured remotely (web UI at / or the
-      # config API) and persist in the volume; only service-level
-      # settings come from the environment.
-      - AUTH_TOKEN
-      - ADMIN_TOKEN
-      - LOG_LEVEL
+      # Provider API keys are configured remotely and persist in the volume.
+      # Override the default admin token before exposing beyond localhost.
+      - AUTH_TOKEN=${AUTH_TOKEN:-}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-changeme}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
 
 volumes:

@@ -50,12 +50,8 @@ class ProviderConfig(BaseModel):
     id: str = Field(min_length=1)
     kind: EngineKind = "openai"
     base_url: str | None = None
-    # Direct token, persisted in the config file; set at boot or remotely
-    # via the config API / web UI. Engines stay disabled until the key is
-    # set — unless the provider needs none (requires_key: false, e.g. a
-    # local server; nllb never needs one).
     api_key: str | None = None
-    requires_key: bool = True
+    requires_key: bool = True  # false marks keyless hosts, i.e. local servers
     # Client-side rate limits, shared by all engines on this provider.
     rps: float | None = Field(default=None, gt=0)
     rpm: float | None = Field(default=None, gt=0)

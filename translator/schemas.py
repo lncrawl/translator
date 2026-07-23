@@ -53,6 +53,7 @@ class EngineInfo(BaseModel):
     provider: str
     kind: EngineKind
     model: str | None = None
+    # Effective state: enabled in config and the provider's key is set.
     enabled: bool = True
     capabilities: EngineCapabilitiesInfo
     status: EngineStatusLiteral

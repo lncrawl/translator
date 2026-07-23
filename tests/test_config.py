@@ -11,7 +11,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 def test_example_config_loads_and_validates() -> None:
     config = load_config(REPO_ROOT / "config.example.yml")
     assert {e.id for e in config.engines} >= {"zai-glm-flash", "gemini-flash"}
-    assert config.routing.chapter[0] == "zai-glm-flash"
+    # The template ships without keys, so only the keyless NLLB lane routes.
+    assert config.routing.chapter == ["nllb"]
+    assert [r.id for r in config.resolved_engines() if r.available] == ["nllb"]
     resolved = config.resolved("zai-glm-flash")
     assert resolved is not None
     assert resolved.base_url == "https://api.z.ai/api/paas/v4"
@@ -127,7 +129,7 @@ def test_engine_unavailable_without_key() -> None:
     config = AppConfig.model_validate(data)
     resolved = config.resolved("a")
     assert resolved is not None
-    assert resolved.available is False  # requires a key by default
+    assert resolved.available is False
 
     provider = config.provider("a")
     assert provider is not None
@@ -136,7 +138,6 @@ def test_engine_unavailable_without_key() -> None:
     assert resolved is not None
     assert resolved.available is True
 
-    # Keyless providers (local servers) opt out explicitly.
     keyless = AppConfig.model_validate(
         {
             "engines": [

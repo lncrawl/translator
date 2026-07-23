@@ -52,7 +52,6 @@ def test_root_serves_demo_page(boot_client: TestClient) -> None:
 
 def test_health_reports_enabled_engines(boot_client: TestClient) -> None:
     body = boot_client.get("/health").json()
-    # "llm" lacks its key, "local" needs none.
     assert body["status"] == "ok"
     assert body["engines_enabled"] == ["local"]
     assert body["version"]
@@ -64,7 +63,9 @@ def test_engines_listing_reflects_boot_time_keys(
     body = boot_client.get("/engines").json()
     by_id = {e["id"]: e for e in body["engines"]}
     assert by_id["llm"]["status"] == "disabled"
+    assert by_id["llm"]["enabled"] is False
     assert by_id["local"]["status"] == "ok"
+    assert by_id["local"]["enabled"] is True
     assert by_id["llm"]["capabilities"]["html"] == "prompt"
     assert by_id["llm"]["capabilities"]["max_input_tokens"] == 100000
 

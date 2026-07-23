@@ -107,8 +107,7 @@ class NllbEngine(Engine):
             except EngineError:
                 raise
             except Exception as exc:
-                # Usually a download hiccup; the router retries with backoff
-                # and benches the engine after repeated failures.
+                # Usually a download hiccup, so transient.
                 raise EngineError(
                     f"{self.id}: failed to load NLLB model {self._model_spec!r}: {exc}",
                     ErrorKind.TRANSIENT,
@@ -178,8 +177,7 @@ class NllbEngine(Engine):
         tgt_code = self._lang_code(target_lang, "target")
         await self._ensure_loaded()
 
-        # Flatten all segments' units into one batch, remembering the span
-        # of units each segment owns; empty segments pass through unchanged.
+        # One batch for all segments; spans track which units belong where.
         all_units: list[list[str]] = []
         spans: list[tuple[int, int]] = []
         for segment in segments:

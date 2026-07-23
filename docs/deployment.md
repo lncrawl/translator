@@ -11,7 +11,6 @@ provider, and the keyless local NLLB lane works immediately. API keys are
 configured remotely after boot:
 
 ```bash
-export AUTH_TOKEN=...                # recommended; also enables config writes
 docker compose up -d                 # pulls ghcr.io/lncrawl/translator:latest
 curl http://localhost:8000/health    # lists which engines came up
 ```
@@ -19,6 +18,10 @@ curl http://localhost:8000/health    # lists which engines came up
 Then open http://localhost:8000/ and paste your provider API keys in the
 Providers table (or `PATCH /providers/{id}` with `{"api_key": "..."}`) —
 the matching engines enable instantly, no restart needed.
+
+The compose file defaults `ADMIN_TOKEN` to `changeme` so config writes work
+out of the box; override it (and set `AUTH_TOKEN`, empty by default) before
+exposing the service beyond localhost.
 
 Prebuilt images (amd64 + arm64) are published to
 `ghcr.io/lncrawl/translator` on every push to main (`latest`, `sha-…`) and

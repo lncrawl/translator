@@ -99,7 +99,7 @@ def list_engines(request: Request) -> EnginesResponse:
                 provider=resolved.provider_id,
                 kind=resolved.kind,
                 model=resolved.model,
-                enabled=resolved.enabled,
+                enabled=resolved.available,
                 capabilities=EngineCapabilitiesInfo(
                     html=caps.html.value,
                     glossary=caps.glossary,
