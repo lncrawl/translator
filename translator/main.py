@@ -12,8 +12,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import __version__
 from .admin import admin_router
@@ -31,6 +33,22 @@ LOG_LEVEL_ENV = "LOG_LEVEL"
 # Reject request bodies larger than this before parsing them. Generous
 # headroom over the largest valid payload (1M chars of HTML + glossary).
 MAX_BODY_BYTES = 10 * 1024 * 1024
+
+
+class ForwardedPrefixMiddleware:
+    """Honor ``X-Forwarded-Prefix`` from a mounting reverse proxy so FastAPI's own
+    docs/OpenAPI links resolve under the prefix. The SPA relies on a ``<base href>``
+    the proxy injects, so this is only for the framework-generated pages."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            prefix = Headers(scope=scope).get("x-forwarded-prefix")
+            if prefix:
+                scope["root_path"] = prefix.rstrip("/")
+        await self.app(scope, receive, send)
 
 
 def configure_logging() -> None:
@@ -77,6 +95,7 @@ def create_app(
         ],
     )
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+    app.add_middleware(ForwardedPrefixMiddleware)
 
     @app.middleware("http")
     async def limit_body_size(

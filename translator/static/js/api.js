@@ -2,8 +2,11 @@ export async function api(path, { method = "GET", body } = {}) {
   const headers = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
   let res;
+  // Relative to the document base so the app works under a reverse-proxy prefix
+  // (lncrawl injects a <base href>); the leading slash would defeat that.
+  const url = path.replace(/^\/+/, "");
   try {
-    res = await fetch(path, {
+    res = await fetch(url, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
