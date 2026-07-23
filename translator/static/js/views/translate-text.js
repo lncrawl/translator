@@ -2,18 +2,20 @@ import {
   el,
   toast,
   busy,
+  copyText,
   glossaryEditor,
   newTermsBlock,
   dataTable,
   langSelect,
   dropdown,
 } from "../ui.js";
+import { icon } from "../icons.js";
 import { api } from "../api.js";
 import { store } from "../store.js";
 
 export const id = "translate-text";
 export const title = "Translate text";
-export const glyph = "✎";
+export const glyph = "text";
 
 const SAMPLE = [
   "斗破苍穹",
@@ -40,14 +42,15 @@ export function mount(root) {
       rows: 7,
       placeholder: "One item per line — titles, tags, author names…",
     }),
-    source: langSelect({ auto: true }),
-    target: langSelect({ value: "en" }),
+    source: langSelect({ auto: true, ariaLabel: "Source language" }),
+    target: langSelect({ value: "en", ariaLabel: "Target language" }),
     context: el("textarea", {
       rows: 2,
       placeholder: "e.g. items from a xianxia novel about cultivation",
     }),
   };
   engineSelect = dropdown({
+    ariaLabel: "Engine",
     options: [{ value: "", label: "auto (routing)" }],
   });
   const counter = el("div", { class: "counter" }, "0 lines");
@@ -62,6 +65,7 @@ export function mount(root) {
     {
       class: "icon-btn",
       title: "Swap languages",
+      "aria-label": "Swap source and target languages",
       onclick: () => {
         if (!f.source.value) {
           toast("Set a source language to swap", "error");
@@ -93,9 +97,7 @@ export function mount(root) {
   let lastTranslations = [];
 
   function copyTranslations() {
-    navigator.clipboard
-      .writeText(lastTranslations.join("\n"))
-      .then(() => toast("Copied all translations"));
+    copyText(lastTranslations.join("\n"), "Copied all translations");
   }
 
   async function translate() {
@@ -142,10 +144,8 @@ export function mount(root) {
                 {
                   class: "ghost small",
                   title: "Copy translation",
-                  onclick: () =>
-                    navigator.clipboard
-                      .writeText(result.translations[i] ?? "")
-                      .then(() => toast("Copied")),
+                  "aria-label": "Copy translation",
+                  onclick: () => copyText(result.translations[i] ?? ""),
                 },
                 "⧉",
               ),
@@ -159,6 +159,21 @@ export function mount(root) {
     resultsCard.style.display = "";
     resultsCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
+
+  const translateBtn = el(
+    "button",
+    {
+      class: "primary cta",
+      onclick: (event) => busy(event.target, translate),
+    },
+    "Translate",
+  );
+  f.input.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      busy(translateBtn, translate);
+    }
+  });
 
   root.append(
     el(
@@ -231,6 +246,7 @@ export function mount(root) {
         el(
           "summary",
           {},
+          el("span", { class: "opts-chev", "aria-hidden": "true" }, icon("chevron", 15)),
           "Options",
           el(
             "span",
@@ -257,18 +273,7 @@ export function mount(root) {
           glossaryRoot,
         ),
       ),
-      el(
-        "div",
-        { class: "actions" },
-        el(
-          "button",
-          {
-            class: "primary cta",
-            onclick: (event) => busy(event.target, translate),
-          },
-          "Translate",
-        ),
-      ),
+      el("div", { class: "actions" }, translateBtn),
     ),
     resultsCard,
   );

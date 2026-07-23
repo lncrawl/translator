@@ -1,9 +1,9 @@
-import { el, toast, busy } from "../ui.js";
+import { el, toast, busy, confirmDialog } from "../ui.js";
 import { store, mutate } from "../store.js";
 
 export const id = "raw-config";
 export const title = "Raw config";
-export const glyph = "{}";
+export const glyph = "code";
 
 let editor;
 let loadedFrom = null;
@@ -39,12 +39,14 @@ export function mount(root) {
                   toast("Config is not valid JSON", "error");
                   return;
                 }
-                if (
-                  !window.confirm(
-                    "Replace the entire runtime config? This persists to config.yml.",
-                  )
-                )
-                  return;
+                const ok = await confirmDialog({
+                  title: "Replace entire config?",
+                  message:
+                    "This overwrites the whole runtime config and persists to config.yml.",
+                  confirmLabel: "Replace config",
+                  danger: true,
+                });
+                if (!ok) return;
                 await mutate("/config", { method: "PUT", body: parsed });
                 toast("Config replaced");
               }),

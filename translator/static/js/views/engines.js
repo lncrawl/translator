@@ -1,9 +1,17 @@
-import { el, toast, busy, statusPill, routeParts, dropdown } from "../ui.js";
+import {
+  el,
+  toast,
+  busy,
+  statusPill,
+  routeParts,
+  dropdown,
+  confirmDialog,
+} from "../ui.js";
 import { store, mutate, liveEngine, keyState } from "../store.js";
 
 export const id = "engines";
 export const title = "Engines";
-export const glyph = "⚙";
+export const glyph = "engines";
 
 let tableBox;
 let filterSelect;
@@ -12,6 +20,7 @@ let filterProvider = "";
 export function mount(root) {
   tableBox = el("div");
   filterSelect = dropdown({
+    ariaLabel: "Filter engines by provider",
     options: [{ value: "", label: "All providers" }],
     onChange: (value) => {
       location.hash = value
@@ -19,7 +28,7 @@ export function mount(root) {
         : "#/engines";
     },
   });
-  filterSelect.root.style.minWidth = "170px";
+  filterSelect.root.style.width = "190px";
   root.append(
     el(
       "div",
@@ -200,12 +209,13 @@ export function onStore() {
 }
 
 async function remove(button, engine) {
-  if (
-    !window.confirm(
-      `Delete engine "${engine.id}"? It is also removed from routing lanes.`,
-    )
-  )
-    return;
+  const ok = await confirmDialog({
+    title: "Delete engine?",
+    message: `"${engine.id}" will be removed and dropped from every routing lane.`,
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   await busy(button, async () => {
     await mutate(`/engines/${encodeURIComponent(engine.id)}`, {
       method: "DELETE",

@@ -3,7 +3,7 @@ import { api } from "../api.js";
 
 export const id = "detect";
 export const title = "Detect language";
-export const glyph = "◎";
+export const glyph = "detect";
 
 export function mount(root) {
   const input = el("textarea", {

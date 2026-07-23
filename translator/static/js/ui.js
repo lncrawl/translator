@@ -1,3 +1,5 @@
+import { icon } from "./icons.js";
+
 export const $ = (sel) => document.querySelector(sel);
 
 export function el(tag, attrs = {}, ...children) {
@@ -26,6 +28,100 @@ export function reportError(err) {
   let message = `${err.code || "error"}: ${err.message}`;
   if (err.retryAfter) message += ` (retry in ${err.retryAfter}s)`;
   toast(message, "error");
+}
+
+/* Copy to clipboard with a fallback for non-secure (http) contexts, where
+   navigator.clipboard is unavailable. */
+export function copyText(text, okMessage = "Copied") {
+  const ok = () => toast(okMessage);
+  const fail = () => toast("Couldn't copy to clipboard", "error");
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(ok, fail);
+    return;
+  }
+  try {
+    const ta = el("textarea", {
+      style: "position:fixed;top:0;opacity:0;pointer-events:none",
+    });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    ok();
+  } catch {
+    fail();
+  }
+}
+
+/* Styled replacement for window.confirm — focus-trapped, Esc cancels, Enter
+   confirms. Resolves true/false. */
+export function confirmDialog({
+  title = "Are you sure?",
+  message = "",
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  danger = false,
+} = {}) {
+  return new Promise((resolve) => {
+    const prevFocus = document.activeElement;
+    let done = false;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      document.removeEventListener("keydown", onKey, true);
+      backdrop.remove();
+      prevFocus?.focus?.();
+      resolve(result);
+    };
+    const cancelBtn = el(
+      "button",
+      { class: "ghost", onclick: () => finish(false) },
+      cancelLabel,
+    );
+    const confirmBtn = el(
+      "button",
+      { class: danger ? "danger solid" : "primary", onclick: () => finish(true) },
+      confirmLabel,
+    );
+    const modal = el(
+      "div",
+      { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": title },
+      el("h2", {}, title),
+      message ? el("p", {}, message) : null,
+      el("div", { class: "actions" }, cancelBtn, confirmBtn),
+    );
+    const backdrop = el(
+      "div",
+      {
+        class: "modal-backdrop",
+        onclick: (event) => {
+          if (event.target === backdrop) finish(false);
+        },
+      },
+      modal,
+    );
+    const focusables = [cancelBtn, confirmBtn];
+    function onKey(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(false);
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        finish(true);
+      } else if (event.key === "Tab") {
+        event.preventDefault();
+        const i = focusables.indexOf(document.activeElement);
+        const next = event.shiftKey
+          ? (i <= 0 ? focusables.length : i) - 1
+          : (i + 1) % focusables.length;
+        focusables[next].focus();
+      }
+    }
+    document.addEventListener("keydown", onKey, true);
+    document.body.append(backdrop);
+    confirmBtn.focus();
+  });
 }
 
 export async function busy(button, fn) {
@@ -146,7 +242,7 @@ export function dataTable(headers, rows, { scroll = true } = {}) {
   return scroll ? el("div", { class: "table-scroll" }, table) : table;
 }
 
-export function dropdown({ options = [], value, onChange } = {}) {
+export function dropdown({ options = [], value, onChange, ariaLabel } = {}) {
   const label = el("span", { class: "dd-label" });
   const button = el(
     "button",
@@ -155,9 +251,10 @@ export function dropdown({ options = [], value, onChange } = {}) {
       class: "dd-btn",
       "aria-haspopup": "listbox",
       "aria-expanded": "false",
+      "aria-label": ariaLabel || null,
     },
     label,
-    el("span", { class: "dd-chev" }, "▾"),
+    el("span", { class: "dd-chev", "aria-hidden": "true" }, icon("chevron", 16)),
   );
   const list = el("div", { class: "dd-list", role: "listbox" });
   const root = el("div", { class: "dd" }, button, list);
@@ -329,13 +426,15 @@ const LANGS = [
 ];
 const LANG_CODES = new Set(LANGS.map(([code]) => code));
 
-export function langSelect({ auto = false, value = "" } = {}) {
+export function langSelect({ auto = false, value = "", ariaLabel } = {}) {
   const custom = el("input", {
     type: "text",
     placeholder: "BCP 47 tag, e.g. pt-PT",
+    "aria-label": ariaLabel ? `${ariaLabel} (custom code)` : null,
     style: "margin-top:6px;display:none",
   });
   const dd = dropdown({
+    ariaLabel,
     options: [
       ...(auto ? [{ value: "", label: "Auto-detect" }] : []),
       ...LANGS.map(([code, name]) => ({

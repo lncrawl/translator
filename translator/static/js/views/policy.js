@@ -3,7 +3,7 @@ import { store, mutate } from "../store.js";
 
 export const id = "policy";
 export const title = "Failure policy";
-export const glyph = "♻";
+export const glyph = "policy";
 
 let fields = {};
 let loadedFrom = null;
@@ -15,6 +15,14 @@ export function mount(root) {
     threshold: el("input", { type: "number", min: 1, step: 1 }),
     cooldown: el("input", { type: "number", min: 1, step: 10 }),
   };
+  const setting = (labelText, input, hintText) =>
+    el(
+      "div",
+      { class: "policy-field" },
+      el("label", { class: "field" }, el("span", {}, labelText), input),
+      el("p", { class: "field-hint" }, hintText),
+    );
+
   root.append(
     el(
       "div",
@@ -27,30 +35,26 @@ export function mount(root) {
       ),
       el(
         "div",
-        { class: "row" },
-        el(
-          "label",
-          { class: "field" },
-          el("span", {}, "Transient retries"),
+        { class: "policy-grid" },
+        setting(
+          "Transient retries",
           fields.retries,
+          "How many times to retry the same engine on a temporary error (timeout, rate limit, 5xx) before falling through to the next engine in the lane.",
         ),
-        el(
-          "label",
-          { class: "field" },
-          el("span", {}, "Backoff base (s)"),
+        setting(
+          "Backoff base (s)",
           fields.backoff,
+          "Base delay for exponential backoff between transient retries — the wait grows with each attempt.",
         ),
-        el(
-          "label",
-          { class: "field" },
-          el("span", {}, "Failure threshold"),
+        setting(
+          "Failure threshold",
           fields.threshold,
+          "Consecutive hard failures on an engine before it is taken out of rotation and put on cooldown.",
         ),
-        el(
-          "label",
-          { class: "field" },
-          el("span", {}, "Cooldown (s)"),
+        setting(
+          "Cooldown (s)",
           fields.cooldown,
+          "How long an engine stays out of rotation after hitting the failure threshold, before the router tries it again.",
         ),
       ),
       el(

@@ -12,10 +12,18 @@ import { store, mutate } from "../store.js";
 export const id = "provider-edit";
 export const title = "Provider";
 export const parent = "providers";
-export const glyph = "⛁";
+export const glyph = "providers";
 
 let box;
 let pending = false;
+let getState = null;
+let baseline = "";
+
+export function guardLeave() {
+  return getState && getState() !== baseline
+    ? "You have unsaved changes to this provider."
+    : null;
+}
 
 export function mount(root) {
   box = el("div", { class: "edit-page" });
@@ -44,6 +52,7 @@ function field(label, input) {
 }
 
 function render() {
+  getState = null;
   const wanted = routeParts().params.get("id") || "";
   const provider = store.config.providers.find((p) => p.id === wanted) || null;
   document.querySelector("#page-title").textContent = provider
@@ -76,6 +85,7 @@ function render() {
     placeholder: "e.g. openrouter",
   });
   const kindSelect = dropdown({
+    ariaLabel: "Provider kind",
     options: ["openai", "deepl", "nllb"].map((k) => ({ value: k, label: k })),
     value: provider?.kind || "openai",
   });
@@ -120,6 +130,25 @@ function render() {
     value: provider?.monthly_chars ?? "",
   });
 
+  const collect = () =>
+    JSON.stringify([
+      idInput.value,
+      kindSelect.value,
+      baseUrlInput.value,
+      keyInput.value,
+      reqKeyInput.checked,
+      rpsInput.value,
+      rpmInput.value,
+      concInput.value,
+      monthlyInput.value,
+    ]);
+  baseline = collect();
+  getState = collect;
+  const leave = () => {
+    getState = null; // navigating intentionally — don't trip the guard
+    goBack("#/providers");
+  };
+
   const save = el(
     "button",
     {
@@ -154,7 +183,7 @@ function render() {
             });
             toast(`Provider ${newId} created`);
           }
-          goBack("#/providers");
+          leave();
         }),
     },
     "Save",
@@ -168,7 +197,7 @@ function render() {
         href: "#/providers",
         onclick: (event) => {
           event.preventDefault();
-          goBack("#/providers");
+          leave();
         },
       },
       "← Back",
@@ -221,11 +250,7 @@ function render() {
         "div",
         { class: "actions" },
         save,
-        el(
-          "button",
-          { class: "ghost", onclick: () => goBack("#/providers") },
-          "Cancel",
-        ),
+        el("button", { class: "ghost", onclick: () => leave() }, "Cancel"),
       ),
     ),
   );

@@ -3,7 +3,7 @@ import { store, keyState } from "../store.js";
 
 export const id = "dashboard";
 export const title = "Dashboard";
-export const glyph = "◧";
+export const glyph = "dashboard";
 
 let statsBox;
 let enginesBox;
@@ -96,7 +96,11 @@ export function onStore() {
       : "",
   );
 
-  const rows = engines.map((engine) =>
+  const sorted = [...engines].sort((a, b) => {
+    const rank = (e) => (e.status === "ok" ? 0 : 1);
+    return rank(a) - rank(b) || a.id.localeCompare(b.id);
+  });
+  const rows = sorted.map((engine) =>
     el(
       "tr",
       {},

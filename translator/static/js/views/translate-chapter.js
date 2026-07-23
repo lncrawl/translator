@@ -2,17 +2,19 @@ import {
   el,
   toast,
   busy,
+  copyText,
   glossaryEditor,
   newTermsBlock,
   langSelect,
   dropdown,
 } from "../ui.js";
+import { icon } from "../icons.js";
 import { api } from "../api.js";
 import { store } from "../store.js";
 
 export const id = "translate-chapter";
 export const title = "Translate chapter";
-export const glyph = "☰";
+export const glyph = "chapter";
 
 const SAMPLES = {
   zh: {
@@ -72,8 +74,8 @@ export function mount(root) {
       rows: 12,
       placeholder: "<h1>第一章</h1>\n<p>…</p>",
     }),
-    source: langSelect({ auto: true }),
-    target: langSelect({ value: "en" }),
+    source: langSelect({ auto: true, ariaLabel: "Source language" }),
+    target: langSelect({ value: "en", ariaLabel: "Target language" }),
     novel: el("input", { type: "text", placeholder: "e.g. 斗破苍穹" }),
     chapter: el("input", { type: "text", placeholder: "e.g. 第一章" }),
     synopsis: el("textarea", {
@@ -87,6 +89,7 @@ export function mount(root) {
     }),
   };
   engineSelect = dropdown({
+    ariaLabel: "Engine",
     options: [{ value: "", label: "auto (routing)" }],
   });
   const counter = el("div", { class: "counter" }, "0 characters");
@@ -100,6 +103,7 @@ export function mount(root) {
     {
       class: "icon-btn",
       title: "Swap languages",
+      "aria-label": "Swap source and target languages",
       onclick: () => {
         if (!f.source.value) {
           toast("Set a source language to swap", "error");
@@ -118,8 +122,16 @@ export function mount(root) {
   const resultsMeta = el("span", { class: "meta" });
   const warnings = el("div");
   const newTerms = el("div");
-  const frameSource = el("iframe", { class: "preview-frame", sandbox: "" });
-  const frameTarget = el("iframe", { class: "preview-frame", sandbox: "" });
+  const frameSource = el("iframe", {
+    class: "preview-frame",
+    sandbox: "",
+    title: "Source chapter preview",
+  });
+  const frameTarget = el("iframe", {
+    class: "preview-frame",
+    sandbox: "",
+    title: "Translated chapter preview",
+  });
   const rawPre = el("pre");
   const rendered = el(
     "div",
@@ -171,10 +183,7 @@ export function mount(root) {
           {
             class: "ghost small",
             title: "Copy translated HTML",
-            onclick: () =>
-              navigator.clipboard
-                .writeText(lastHtml)
-                .then(() => toast("Copied translated HTML")),
+            onclick: () => copyText(lastHtml, "Copied translated HTML"),
           },
           "⧉ Copy HTML",
         ),
@@ -247,6 +256,21 @@ export function mount(root) {
     resultsCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  const translateBtn = el(
+    "button",
+    {
+      class: "primary cta",
+      onclick: (event) => busy(event.target, translate),
+    },
+    "Translate chapter",
+  );
+  f.input.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      busy(translateBtn, translate);
+    }
+  });
+
   root.append(
     el(
       "div",
@@ -310,6 +334,7 @@ export function mount(root) {
         el(
           "summary",
           {},
+          el("span", { class: "opts-chev", "aria-hidden": "true" }, icon("chevron", 15)),
           "Options",
           el(
             "span",
@@ -357,18 +382,7 @@ export function mount(root) {
           glossaryRoot,
         ),
       ),
-      el(
-        "div",
-        { class: "actions" },
-        el(
-          "button",
-          {
-            class: "primary cta",
-            onclick: (event) => busy(event.target, translate),
-          },
-          "Translate chapter",
-        ),
-      ),
+      el("div", { class: "actions" }, translateBtn),
     ),
     resultsCard,
   );

@@ -184,10 +184,18 @@ body {
     color 0.15s;
 }
 .nav-item .glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
-  text-align: center;
-  font-size: 15px;
-  opacity: 0.85;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+.nav-item .glyph svg {
+  display: block;
+}
+.nav-item.active .glyph {
+  opacity: 1;
 }
 .nav-item:hover {
   color: var(--text);
@@ -369,6 +377,30 @@ main {
   margin: 2px 0 14px;
   max-width: 85ch;
 }
+.field-hint {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin: 0;
+  max-width: 70ch;
+}
+.policy-grid {
+  display: grid;
+  gap: 18px 20px;
+  grid-template-columns: 1fr;
+  margin-bottom: 6px;
+}
+@media (min-width: 620px) {
+  .policy-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.policy-field label.field {
+  margin-bottom: 5px;
+}
+.policy-field .field-hint {
+  min-height: 2.9em; /* keep inputs aligned when hints wrap to different heights */
+}
 
 .grid {
   display: grid;
@@ -394,12 +426,34 @@ main {
 }
 a.stat {
   display: block;
+  position: relative;
   color: inherit;
   text-decoration: none;
-  transition: border-color 0.15s;
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
+}
+/* Persistent affordance so linkable tiles are distinguishable without hover. */
+a.stat::after {
+  content: "→";
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  color: var(--muted);
+  font-size: 14px;
+  transition:
+    transform 0.15s,
+    color 0.15s;
+}
+a.stat .label {
+  padding-right: 18px;
 }
 a.stat:hover {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+a.stat:hover::after {
+  color: var(--accent);
+  transform: translateX(2px);
 }
 a.stat:focus-visible {
   outline: none;
@@ -417,6 +471,7 @@ a.stat:focus-visible {
   font-weight: 650;
   letter-spacing: -0.02em;
   margin-top: 2px;
+  overflow-wrap: anywhere;
 }
 .stat .sub {
   font-size: 12.5px;
@@ -441,7 +496,6 @@ label.field > span {
 input[type="text"],
 input[type="password"],
 input[type="number"],
-select,
 textarea {
   width: 100%;
   padding: 8px 11px;
@@ -461,7 +515,6 @@ textarea {
   line-height: 1.5;
 }
 input:focus,
-select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--accent);
@@ -1028,10 +1081,14 @@ pre {
   white-space: nowrap;
 }
 .dd-chev {
+  display: inline-flex;
   color: var(--muted);
-  font-size: 10px;
   flex-shrink: 0;
   transition: transform 0.15s;
+}
+.dd-btn:hover .dd-chev,
+.dd.open .dd-chev {
+  color: var(--text);
 }
 .dd.open .dd-chev {
   transform: rotate(180deg);
@@ -1155,15 +1212,17 @@ details.opts summary {
 details.opts summary::-webkit-details-marker {
   display: none;
 }
-details.opts summary::before {
-  content: "▸";
-  font-size: 11px;
+.opts-chev {
+  display: inline-flex;
+  color: var(--muted);
+  transform: rotate(-90deg);
   transition: transform 0.15s;
 }
-details.opts[open] summary::before {
-  transform: rotate(90deg);
+details.opts[open] summary .opts-chev {
+  transform: rotate(0);
 }
-details.opts summary:hover {
+details.opts summary:hover,
+details.opts summary:hover .opts-chev {
   color: var(--text);
 }
 details.opts .opts-body {
@@ -1175,4 +1234,116 @@ details.opts .opts-body {
   .actions .cta {
     width: 100%;
   }
+}
+
+/* ---------------------------------------------------------- view transition */
+.view-in {
+  animation: fade-in 0.18s ease-out;
+}
+
+/* -------------------------------------------------- boot / connection state */
+.boot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 50dvh;
+  text-align: center;
+  color: var(--muted);
+  padding: 24px;
+}
+.boot .boot-icon {
+  font-size: 26px;
+}
+.boot h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.boot p {
+  margin: 0;
+  max-width: 42ch;
+  font-size: 13.5px;
+}
+.conn-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 9px 14px;
+  border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--border));
+  background: color-mix(in srgb, var(--bad) 9%, transparent);
+  color: var(--bad);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------- skeletons */
+.skeleton {
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--code-bg) 25%,
+    color-mix(in srgb, var(--code-bg) 55%, var(--panel)) 50%,
+    var(--code-bg) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ------------------------------------------------------------- modal dialog */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(9, 12, 18, 0.5);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: fade-in 0.15s ease-out;
+}
+.modal {
+  width: min(440px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 20px 22px;
+  animation: toast-in 0.16s ease-out;
+}
+.modal h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.modal p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.modal .actions {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+button.danger.solid {
+  background: var(--bad);
+  color: #fff;
+  border-color: var(--bad);
+}
+button.danger.solid:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bad) 88%, #000);
 }

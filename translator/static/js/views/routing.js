@@ -3,7 +3,7 @@ import { store, mutate, inactiveEngineIds } from "../store.js";
 
 export const id = "routing";
 export const title = "Routing lanes";
-export const glyph = "⇶";
+export const glyph = "routing";
 
 const LANE_LABELS = { chapter: "Chapter lane", short_text: "Short-text lane" };
 
@@ -59,12 +59,17 @@ export function mount(root) {
 }
 
 function laneItem(ids, index, commit) {
+  const name = ids[index];
   const item = el(
     "div",
     { class: "lane-item", draggable: "true" },
-    el("span", { class: "handle", title: "Drag to reorder" }, "⠿"),
+    el(
+      "span",
+      { class: "handle", title: "Drag to reorder", "aria-hidden": "true" },
+      "⠿",
+    ),
     el("span", { class: "pos" }, String(index + 1)),
-    el("span", { class: "name mono" }, ids[index]),
+    el("span", { class: "name mono" }, name),
     el(
       "span",
       { class: "arrows" },
@@ -72,6 +77,7 @@ function laneItem(ids, index, commit) {
         "button",
         {
           class: "ghost small",
+          "aria-label": `Move ${name} up`,
           disabled: index === 0 ? "" : null,
           onclick: () => {
             [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]];
@@ -84,6 +90,7 @@ function laneItem(ids, index, commit) {
         "button",
         {
           class: "ghost small",
+          "aria-label": `Move ${name} down`,
           disabled: index === ids.length - 1 ? "" : null,
           onclick: () => {
             [ids[index + 1], ids[index]] = [ids[index], ids[index + 1]];
@@ -96,6 +103,7 @@ function laneItem(ids, index, commit) {
         "button",
         {
           class: "danger small",
+          "aria-label": `Remove ${name} from lane`,
           onclick: () => {
             ids.splice(index, 1);
             commit();
@@ -169,6 +177,7 @@ function render() {
         .map((e) => e.id)
         .filter((i) => !draft[lane].includes(i) && !inactive.has(i));
       const addSelect = dropdown({
+        ariaLabel: `Add engine to ${LANE_LABELS[lane]}`,
         options: [
           { value: "", label: "add engine…" },
           ...unused.map((i) => ({ value: i, label: i })),

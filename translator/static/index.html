@@ -26,16 +26,16 @@
 
       <div class="content">
         <div class="topbar">
-          <button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>
+          <button class="menu-btn" id="menu-btn" aria-label="Open menu">☰</button>
           <h1 id="page-title">Dashboard</h1>
-          <span id="health-badge" class="badge">…</span>
-          <button class="icon-btn" id="theme-btn" title="Theme">◐</button>
+          <span id="health-badge" class="badge" aria-live="polite">…</span>
+          <button class="icon-btn" id="theme-btn" title="Theme" aria-label="Toggle theme">◐</button>
         </div>
-        <main id="views"></main>
+        <main id="views" tabindex="-1"></main>
       </div>
     </div>
 
-    <div id="toast"></div>
+    <div id="toast" role="status" aria-live="polite" aria-atomic="false"></div>
 
     <script type="module" src="/static/js/app.js"></script>
   </body>

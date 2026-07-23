@@ -12,10 +12,18 @@ import { store, mutate } from "../store.js";
 export const id = "engine-edit";
 export const title = "Engine";
 export const parent = "engines";
-export const glyph = "⚙";
+export const glyph = "engines";
 
 let box;
 let pending = false;
+let getState = null;
+let baseline = "";
+
+export function guardLeave() {
+  return getState && getState() !== baseline
+    ? "You have unsaved changes to this engine."
+    : null;
+}
 
 export function mount(root) {
   box = el("div", { class: "edit-page" });
@@ -44,6 +52,7 @@ function field(label, input) {
 }
 
 function render() {
+  getState = null;
   const params = routeParts().params;
   const wanted = params.get("id") || "";
   const engine = store.config.engines.find((e) => e.id === wanted) || null;
@@ -100,6 +109,7 @@ function render() {
     placeholder: "e.g. glm-flash",
   });
   const providerSelect = dropdown({
+    ariaLabel: "Provider",
     options: store.config.providers.map((p) => ({ value: p.id, label: p.id })),
   });
   providerSelect.value =
@@ -132,6 +142,23 @@ function render() {
   });
   if (engine && Object.keys(engine.extra_body || {}).length)
     extraInput.value = JSON.stringify(engine.extra_body, null, 2);
+
+  const collect = () =>
+    JSON.stringify([
+      idInput.value,
+      providerSelect.value,
+      modelInput.value,
+      maxTokensInput.value,
+      chunkTokensInput.value,
+      enabledInput.checked,
+      extraInput.value,
+    ]);
+  baseline = collect();
+  getState = collect;
+  const leave = () => {
+    getState = null; // navigating intentionally — don't trip the guard
+    goBack("#/engines");
+  };
 
   const save = el(
     "button",
@@ -174,7 +201,7 @@ function render() {
             });
             toast(`Engine ${newId} created`);
           }
-          goBack("#/engines");
+          leave();
         }),
     },
     "Save",
@@ -188,7 +215,7 @@ function render() {
         href: "#/engines",
         onclick: (event) => {
           event.preventDefault();
-          goBack("#/engines");
+          leave();
         },
       },
       "← Back",
@@ -225,11 +252,7 @@ function render() {
         "div",
         { class: "actions" },
         save,
-        el(
-          "button",
-          { class: "ghost", onclick: () => goBack("#/engines") },
-          "Cancel",
-        ),
+        el("button", { class: "ghost", onclick: () => leave() }, "Cancel"),
       ),
     ),
   );

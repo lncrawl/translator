@@ -1,9 +1,9 @@
-import { el, toast, busy } from "../ui.js";
+import { el, toast, busy, confirmDialog } from "../ui.js";
 import { store, mutate, keyState } from "../store.js";
 
 export const id = "providers";
 export const title = "Providers";
-export const glyph = "⛁";
+export const glyph = "providers";
 
 let cardsBox;
 
@@ -134,7 +134,13 @@ export function onStore() {
 }
 
 async function remove(button, provider) {
-  if (!window.confirm(`Delete provider "${provider.id}"?`)) return;
+  const ok = await confirmDialog({
+    title: "Delete provider?",
+    message: `"${provider.id}" and its account settings will be removed. Its engines stay but lose their key.`,
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   await busy(button, async () => {
     await mutate(`/providers/${encodeURIComponent(provider.id)}`, {
       method: "DELETE",
