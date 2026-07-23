@@ -1,23 +1,11 @@
 from pathlib import Path
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
-from translator.config import AppConfig, load_config, save_config
+from translator.config import AppConfig, build_overlay, load_config, save_config
 from translator.engines import is_available
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-
-
-def test_example_config_loads_and_validates() -> None:
-    config = load_config(REPO_ROOT / "config.example.yml")
-    assert {e.id for e in config.engines} >= {"zai-glm-flash", "gemini-flash"}
-    # The template ships without keys, so only the keyless NLLB lane routes.
-    assert config.routing.chapter == ["nllb"]
-    assert [r.id for r in config.resolved_engines() if is_available(r)] == ["nllb"]
-    resolved = config.resolved("zai-glm-flash")
-    assert resolved is not None
-    assert resolved.base_url == "https://api.z.ai/api/paas/v4"
 
 
 def test_legacy_flat_config_is_migrated() -> None:
@@ -79,6 +67,76 @@ def test_save_config_round_trips(tmp_path: Path) -> None:
     save_config(config, path)
     loaded = load_config(path)
     assert loaded == config
+
+
+def test_sparse_overlay_merges_defaults(tmp_path: Path) -> None:
+    # A file listing only one provider key still gets every default engine.
+    path = tmp_path / "config.yml"
+    path.write_text("providers:\n  - id: zai\n    api_key: k\n", encoding="utf-8")
+    config = load_config(path)
+    assert {e.id for e in config.engines} >= {"zai-glm-flash", "gemini-flash", "nllb"}
+    zai = config.provider("zai")
+    assert zai is not None
+    assert zai.api_key == "k"
+    # The default's base_url survives the merge (not clobbered by the overlay).
+    assert zai.base_url == "https://api.z.ai/api/paas/v4"
+    # Setting the key lights up the engine; defaults for others still apply.
+    assert is_available(config.resolved("zai-glm-flash"))  # type: ignore[arg-type]
+
+
+def test_build_overlay_is_sparse() -> None:
+    config = load_config(Path("/nonexistent.yml"))  # built-in defaults
+    provider = config.provider("zai")
+    assert provider is not None
+    provider.api_key = "secret"
+    overlay = build_overlay(config)
+    # Only the one changed field is written — not the whole default tree.
+    assert overlay == {"providers": [{"id": "zai", "api_key": "secret"}]}
+
+
+def test_overlay_removals_suppress_defaults(tmp_path: Path) -> None:
+    path = tmp_path / "config.yml"
+    path.write_text(
+        "removed_providers: [groq]\nremoved_engines: [bing]\n", encoding="utf-8"
+    )
+    config = load_config(path)
+    ids = {e.id for e in config.engines}
+    assert config.provider("groq") is None
+    # groq's engines go with the removed provider; bing is removed directly.
+    assert {"groq-oss", "groq-llama", "bing"}.isdisjoint(ids)
+    # Removed engines are pruned from the (default) routing lanes too.
+    assert "bing" not in config.routing.chapter
+    assert "groq-oss" not in config.routing.short_text
+
+
+def test_removals_round_trip_through_save(tmp_path: Path) -> None:
+    config = load_config(Path("/nonexistent.yml"))  # built-in defaults
+    config.engines = [e for e in config.engines if e.id != "baidu"]
+    config.providers = [p for p in config.providers if p.id != "baidu"]
+    config.routing.chapter = [i for i in config.routing.chapter if i != "baidu"]
+    config.routing.short_text = [i for i in config.routing.short_text if i != "baidu"]
+    path = tmp_path / "config.yml"
+    save_config(config, path)
+    saved = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert saved.get("removed_providers") == ["baidu"]
+    assert "baidu" in saved.get("removed_engines", [])
+    reloaded = load_config(path)
+    assert reloaded.provider("baidu") is None
+    assert reloaded.engine("baidu") is None
+    # Everything else still merges in from defaults.
+    assert reloaded.provider("zai") is not None
+
+
+def test_legacy_flat_config_skips_default_merge(tmp_path: Path) -> None:
+    path = tmp_path / "config.yml"
+    path.write_text(
+        "engines:\n  - id: solo\n    kind: openai\n    base_url: http://x\n"
+        "    requires_key: false\nrouting:\n  chapter: [solo]\n",
+        encoding="utf-8",
+    )
+    config = load_config(path)
+    # Legacy flat files load standalone — defaults are NOT merged in.
+    assert {e.id for e in config.engines} == {"solo"}
 
 
 def test_missing_file_yields_builtin_defaults(tmp_path: Path) -> None:

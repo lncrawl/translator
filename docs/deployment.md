@@ -33,13 +33,80 @@ Three options, all optional:
 
 - **Runtime config API** (recommended): change providers, engines, routing,
   or the failure policy over HTTP — see "Runtime config API" below. The
-  first write creates `/data/config.yml` (persisted in the compose volume),
-  which then takes precedence over the built-in defaults on every boot.
+  first write creates `/data/config.yml` (persisted in the compose volume).
 - **Own file**: bind-mount a directory over `/data` with a `config.yml` in
-  it (start from `config.example.yml`), or point `$TRANSLATOR_CONFIG` at a
-  file elsewhere.
+  it, or point `$TRANSLATOR_CONFIG` at a file elsewhere.
 - **Local dev**: a `./config.yml` in the working directory is picked up
   automatically; without one, the same built-in defaults apply.
+
+### The config file is a sparse overlay
+
+`config.yml` is **not** a full snapshot — it is a sparse overlay on the
+built-in defaults (`translator/defaults.py`). On load, its entries merge onto
+the defaults **by id**, so you list only what you change; everything you omit
+falls back to the default. This is what keeps the file from going stale: when
+a new default provider/engine is added (or an existing one's model id or rate
+limits change) in a new release, it flows into your install automatically
+instead of being frozen at whatever the file first captured.
+
+The API and web UI write this same overlay back, so a hand-edited file and a
+UI-managed one stay in the same minimal shape. A typical file is just a few
+keys:
+
+```yaml
+# Paste keys for default providers you use — base_url, limits, etc. are
+# inherited from the default of the same id. The matching engines enable
+# themselves. Override any inherited field by adding it here.
+providers:
+  - id: zai
+    api_key: "your-z.ai-key"
+  - id: gemini
+    api_key: "your-ai-studio-key"
+  # baidu takes two named credentials instead of a single api_key:
+  # - id: baidu
+  #   options: {app_id: "...", secret_key: "..."}
+```
+
+Other overlay operations:
+
+- **Add your own provider/engine** — give it a new id; custom entries are
+  listed in full. A local OpenAI-compatible server (llama.cpp, Ollama) needs
+  no key:
+  ```yaml
+  providers:
+    - id: local-llm
+      kind: openai
+      base_url: http://localhost:8080/v1
+      requires_key: false
+  engines:
+    - id: local-qwen
+      provider: local-llm
+      model: qwen3.5-4b
+      max_input_tokens: 32000
+  ```
+- **Override one field** of a default engine (the rest is inherited):
+  ```yaml
+  engines:
+    - id: nllb
+      extra_body: {beam_size: 4}  # better output, ~2x CPU time
+  ```
+- **Drop a default** you never want, by id (a removed provider takes its
+  engines with it):
+  ```yaml
+  removed_providers: [groq]
+  removed_engines: [groq-oss, groq-llama]
+  ```
+- **Reorder/restrict a routing lane** — only the lanes you list change; omit
+  `routing` to keep the default order (every default engine, keyless NLLB
+  last):
+  ```yaml
+  routing:
+    chapter: [zai-glm-flash, gemini-flash, nllb]
+  ```
+
+Legacy flat configs (engines carrying `base_url`/`kind` inline instead of a
+`provider` reference) predate the overlay format and are loaded standalone —
+defaults are not merged into them.
 
 ## Engine keys
 
@@ -52,12 +119,18 @@ Provider API keys are set remotely — web UI at `/` or
 | `zai` | https://z.ai — GLM-4.7-Flash is free with no token cap |
 | `gemini` | https://aistudio.google.com — free tier, volatile quotas |
 | `deepl` | https://www.deepl.com/pro-api — Free plan, 500K chars/mo (key ends in `:fx`) |
-| `cerebras`, `mistral`, `groq`, `openrouter` | see docs/translation-engines.md |
+| `baidu` | https://fanyi-api.baidu.com — `app_id` + `secret_key` (strong on CJK) |
+| `cerebras`, `mistral`, `groq`, `openrouter`, `modelscope`, `dashscope`, `nvidia` | see docs/translation-engines.md |
 
-Add any other OpenAI-compatible provider (DeepSeek, ModelScope…) as a new
-`kind: openai` provider via the config API or UI — no code changes; local
-servers that need no key take `requires_key: false`. Engines whose provider
-has no key yet are auto-disabled and shown as such in `GET /engines`.
+`bing` (Microsoft Translator via Edge's keyless endpoint) needs no key and is
+available out of the box. `baidu` takes two named credentials — set them in
+one call: `PATCH /providers/baidu {"options": {"app_id": "...", "secret_key":
+"..."}}`.
+
+Add any other OpenAI-compatible provider (DeepSeek, Cloudflare Workers AI…)
+as a new `kind: openai` provider via the config API or UI — no code changes;
+local servers that need no key take `requires_key: false`. Engines whose
+provider has no key yet are auto-disabled and shown as such in `GET /engines`.
 
 Keys live in the config file and are returned by `GET /config`, so keep
 the service on a private network and the file out of version control.

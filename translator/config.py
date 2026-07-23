@@ -221,12 +221,183 @@ def resolve_config_path(path: str | Path | None = None) -> Path:
     return Path(path or os.environ.get(CONFIG_PATH_ENV) or DEFAULT_CONFIG_PATH)
 
 
+# -- sparse overlay -----------------------------------------------------------
+#
+# The config file is a *sparse overlay* on the built-in defaults, not a full
+# snapshot: it carries only what differs (api keys, custom providers/engines,
+# routing tweaks) plus explicit removals. Defaults always come from code and
+# merge underneath by id, so new or changed defaults reach existing installs
+# without the file going stale. ``load_config`` merges; ``save_config`` diffs.
+
+
+def _looks_legacy(data: dict[str, Any]) -> bool:
+    """A pre-overlay flat config: an engine carrying provider-level fields
+    (base_url/kind/...) inline instead of a ``provider`` reference. Such files
+    predate the overlay format and are loaded standalone (defaults not merged)
+    for backward compatibility."""
+    engines = data.get("engines")
+    if not isinstance(engines, list):
+        return False
+    markers = set(_LEGACY_PROVIDER_FIELDS)
+    return any(
+        isinstance(e, dict) and "provider" not in e and bool(markers & e.keys())
+        for e in engines
+    )
+
+
+def _by_id(entries: Any) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    if isinstance(entries, list):
+        for entry in entries:
+            if isinstance(entry, dict) and "id" in entry:
+                out[entry["id"]] = entry
+    return out
+
+
+def _apply_overlay(defaults: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """Merge a sparse ``overlay`` onto ``defaults`` by id (overlay fields win).
+
+    Defaults keep their order; overlay-only entries are appended. Ids in
+    ``removed_providers``/``removed_engines`` drop the matching default, and a
+    removed provider takes its engines with it. Routing lanes fall back to the
+    default lane when the overlay omits them, then are pruned to engines that
+    survived the merge.
+    """
+    removed_providers = set(overlay.get("removed_providers") or [])
+    removed_engines = set(overlay.get("removed_engines") or [])
+    overlay_providers = _by_id(overlay.get("providers"))
+    overlay_engines = _by_id(overlay.get("engines"))
+
+    providers: list[dict[str, Any]] = []
+    seen_providers: set[str] = set()
+    for base in defaults.get("providers") or []:
+        pid = base["id"]
+        if pid in removed_providers:
+            continue
+        providers.append({**base, **overlay_providers.get(pid, {})})
+        seen_providers.add(pid)
+    for pid, entry in overlay_providers.items():
+        if pid not in seen_providers and pid not in removed_providers:
+            providers.append(entry)
+            seen_providers.add(pid)
+    provider_ids = {p["id"] for p in providers}
+
+    engines: list[dict[str, Any]] = []
+    seen_engines: set[str] = set()
+    for base in defaults.get("engines") or []:
+        eid = base["id"]
+        if eid in removed_engines:
+            continue
+        engines.append({**base, **overlay_engines.get(eid, {})})
+        seen_engines.add(eid)
+    for eid, entry in overlay_engines.items():
+        if eid not in seen_engines and eid not in removed_engines:
+            engines.append(entry)
+            seen_engines.add(eid)
+    engines = [e for e in engines if e.get("provider") in provider_ids]
+    engine_ids = {e["id"] for e in engines}
+
+    overlay_routing = overlay.get("routing") or {}
+    default_routing = defaults.get("routing") or {}
+    routing: dict[str, list[str]] = {}
+    for lane in ("chapter", "short_text"):
+        source = (
+            overlay_routing[lane]
+            if lane in overlay_routing
+            else (default_routing.get(lane) or [])
+        )
+        routing[lane] = [i for i in source if i in engine_ids]
+
+    merged: dict[str, Any] = {
+        "providers": providers,
+        "engines": engines,
+        "routing": routing,
+    }
+    if "failure_policy" in overlay:
+        merged["failure_policy"] = overlay["failure_policy"]
+    elif "failure_policy" in defaults:
+        merged["failure_policy"] = defaults["failure_policy"]
+    return merged
+
+
+def _diff_entry(current: BaseModel, base: BaseModel) -> dict[str, Any]:
+    """Fields of ``current`` that differ from ``base``, always keeping ``id``."""
+    cur = current.model_dump(mode="json")
+    bas = base.model_dump(mode="json")
+    diff: dict[str, Any] = {"id": cur["id"]}
+    for key, value in cur.items():
+        if key != "id" and bas.get(key) != value:
+            diff[key] = value
+    return diff
+
+
+def build_overlay(config: AppConfig) -> dict[str, Any]:
+    """The sparse overlay for ``config`` relative to the built-in defaults:
+    only changed/custom entries, derived removals, and non-default routing."""
+    from .defaults import DEFAULT_CONFIG
+
+    defaults = AppConfig.model_validate(DEFAULT_CONFIG)
+    default_providers = {p.id: p for p in defaults.providers}
+    default_engines = {e.id: e for e in defaults.engines}
+    overlay: dict[str, Any] = {}
+
+    def _custom(model: BaseModel) -> dict[str, Any]:
+        return model.model_dump(mode="json", exclude_defaults=True, exclude_none=True)
+
+    provider_diffs: list[dict[str, Any]] = []
+    for provider in config.providers:
+        base = default_providers.get(provider.id)
+        if base is None:
+            provider_diffs.append(_custom(provider))
+        else:
+            diff = _diff_entry(provider, base)
+            if len(diff) > 1:  # more than just the id — something changed
+                provider_diffs.append(diff)
+    if provider_diffs:
+        overlay["providers"] = provider_diffs
+    removed_providers = [
+        pid for pid in default_providers if config.provider(pid) is None
+    ]
+    if removed_providers:
+        overlay["removed_providers"] = removed_providers
+
+    engine_diffs: list[dict[str, Any]] = []
+    for engine in config.engines:
+        engine_base = default_engines.get(engine.id)
+        if engine_base is None:
+            engine_diffs.append(_custom(engine))
+        else:
+            diff = _diff_entry(engine, engine_base)
+            if len(diff) > 1:
+                engine_diffs.append(diff)
+    if engine_diffs:
+        overlay["engines"] = engine_diffs
+    removed_engines = [eid for eid in default_engines if config.engine(eid) is None]
+    if removed_engines:
+        overlay["removed_engines"] = removed_engines
+
+    routing: dict[str, list[str]] = {}
+    for lane in ("chapter", "short_text"):
+        current = getattr(config.routing, lane)
+        if current != getattr(defaults.routing, lane):
+            routing[lane] = current
+    if routing:
+        overlay["routing"] = routing
+
+    failure_policy = config.failure_policy.model_dump(exclude_defaults=True)
+    if failure_policy:
+        overlay["failure_policy"] = failure_policy
+    return overlay
+
+
 def load_config(path: str | Path | None = None) -> AppConfig:
     """Load config from ``path``, $TRANSLATOR_CONFIG, or ./config.yml.
 
-    Without a config file the built-in defaults apply: every known free
-    provider is pre-wired and engines activate when their provider's key
-    env var is set — no file is needed to get started.
+    Without a config file the built-in defaults apply — no file is needed to
+    get started. When a file exists it is a *sparse overlay* on those defaults
+    (see above): its entries merge onto the defaults by id, so newly added or
+    updated default providers/engines reach the install automatically instead
+    of the file going stale. Legacy flat configs are loaded standalone.
     """
     from .defaults import DEFAULT_CONFIG
 
@@ -236,18 +407,23 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         return AppConfig.model_validate(DEFAULT_CONFIG)
     with resolved.open("r", encoding="utf-8") as fp:
         data = yaml.safe_load(fp) or {}
-    return AppConfig.model_validate(data)
+    if _looks_legacy(data):
+        logger.info("loading legacy flat config at %s (defaults not merged)", resolved)
+        return AppConfig.model_validate(data)
+    return AppConfig.model_validate(_apply_overlay(DEFAULT_CONFIG, data))
 
 
 def save_config(config: AppConfig, path: str | Path) -> None:
-    """Write config as YAML, atomically where the filesystem allows.
+    """Write the sparse overlay for ``config`` as YAML, atomically where the
+    filesystem allows.
 
-    Falls back to an in-place write when rename fails — e.g. a Docker
-    single-file bind mount, where the target cannot be replaced (EBUSY).
+    Only what differs from the built-in defaults is written, so the file stays
+    small and defaults keep flowing in on load. Falls back to an in-place write
+    when rename fails — e.g. a Docker single-file bind mount, where the target
+    cannot be replaced (EBUSY).
     """
     resolved = Path(path)
-    data = config.model_dump(mode="json", exclude_defaults=True, exclude_none=True)
-    text = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+    text = yaml.safe_dump(build_overlay(config), sort_keys=False, allow_unicode=True)
     tmp = resolved.with_name(resolved.name + ".tmp")
     try:
         tmp.write_text(text, encoding="utf-8")

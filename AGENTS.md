@@ -48,7 +48,9 @@ bar). English → other languages must work but quality is best-effort.
 - `tests/` — pytest suite; `helpers.py` has `FakeEngine`; realistic chapter
   fixtures in `tests/fixtures/{zh,ja,ko}.html`.
 - `docs/` — engine research, service design, deployment guide.
-- `config.example.yml` — all known free engine lanes, ready to uncomment.
+- `translator/defaults.py` — built-in defaults (all known free lanes). The
+  optional `config.yml` is a sparse *overlay* on these, merged by id on load;
+  see the deployment guide's "sparse overlay" section.
 
 ## Commands
 

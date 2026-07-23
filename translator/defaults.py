@@ -6,8 +6,11 @@ the web UI at / or the config API (the first write creates the config
 file). A local NLLB model (no key needed) is the last-resort fallback,
 so the service works out of the box.
 
-Free tiers churn — see docs/translation-engines.md for signup details and
-config.example.yml for a commented version of this structure.
+These defaults are always the base layer: any ``config.yml`` is a sparse
+overlay merged onto them by id (see ``config.py`` and the deployment guide),
+so additions or changes here reach existing installs without their file
+going stale. Free tiers churn — see docs/translation-engines.md for signup
+details.
 """
 
 from typing import Any
@@ -62,6 +65,34 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "rpm": 20,
             "max_concurrency": 1,
         },
+        # api-inference.modelscope.cn — Alibaba ModelScope; free after binding
+        # an Alibaba account (real-name verification), ~2,000 req/day (~500 per
+        # model). Qwen3.5 / DeepSeek / GLM family, strong on CJK.
+        {
+            "id": "modelscope",
+            "kind": "openai",
+            "base_url": "https://api-inference.modelscope.cn/v1",
+            "rpm": 60,
+            "max_concurrency": 2,
+        },
+        # dashscope-intl.aliyuncs.com — Alibaba Model Studio (intl.); one-time
+        # ~1M tokens/model for 90 days. qwen-max/plus/turbo, OpenAI-compatible.
+        {
+            "id": "dashscope",
+            "kind": "openai",
+            "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            "rpm": 20,
+            "max_concurrency": 1,
+        },
+        # integrate.api.nvidia.com — NVIDIA NIM; one-time request credits over
+        # 100+ hosted models. Good burst lane, not sustainable long-term.
+        {
+            "id": "nvidia",
+            "kind": "openai",
+            "base_url": "https://integrate.api.nvidia.com/v1",
+            "rpm": 40,
+            "max_concurrency": 1,
+        },
         # deepl.com/pro-api — optional NMT fallback for short strings.
         {
             "id": "deepl",
@@ -106,6 +137,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "max_input_tokens": 250_000,
         },
         {
+            "id": "gemini-flash-lite",
+            "provider": "gemini",
+            "model": "gemini-2.5-flash-lite",
+            "max_input_tokens": 250_000,
+        },
+        {
             "id": "cerebras-glm",
             "provider": "cerebras",
             "model": "zai-glm-4.7",
@@ -124,9 +161,39 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "max_input_tokens": 8_000,
         },
         {
+            "id": "groq-llama",
+            "provider": "groq",
+            "model": "llama-3.3-70b-versatile",
+            "max_input_tokens": 8_000,
+        },
+        {
             "id": "or-nemotron",
             "provider": "openrouter",
             "model": "nvidia/nemotron-3-super-120b-a12b:free",
+            "max_input_tokens": 100_000,
+        },
+        {
+            "id": "or-qwen",
+            "provider": "openrouter",
+            "model": "qwen/qwen3.5-235b-a22b:free",
+            "max_input_tokens": 100_000,
+        },
+        {
+            "id": "modelscope-qwen",
+            "provider": "modelscope",
+            "model": "Qwen/Qwen3.5-235B-A22B",
+            "max_input_tokens": 100_000,
+        },
+        {
+            "id": "dashscope-qwen",
+            "provider": "dashscope",
+            "model": "qwen-plus",
+            "max_input_tokens": 100_000,
+        },
+        {
+            "id": "nvidia-qwen",
+            "provider": "nvidia",
+            "model": "qwen/qwen3.5-235b-a22b",
             "max_input_tokens": 100_000,
         },
         {"id": "deepl", "provider": "deepl"},
@@ -148,10 +215,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "chapter": [
             "zai-glm-flash",
             "gemini-flash",
+            "modelscope-qwen",
             "cerebras-glm",
+            "dashscope-qwen",
             "mistral-large",
             "or-nemotron",
+            "or-qwen",
+            "nvidia-qwen",
+            "gemini-flash-lite",
             "groq-oss",
+            "groq-llama",
             "deepl",
             "bing",
             "baidu",
@@ -161,10 +234,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "zai-glm-flash",
             "gemini-flash",
             "deepl",
+            "modelscope-qwen",
             "cerebras-glm",
+            "dashscope-qwen",
             "mistral-large",
             "or-nemotron",
+            "or-qwen",
+            "nvidia-qwen",
+            "gemini-flash-lite",
             "groq-oss",
+            "groq-llama",
             "bing",
             "baidu",
             "nllb",
