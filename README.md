@@ -19,10 +19,10 @@ so translation works even with zero keys:
 
 ```bash
 docker compose up -d
-curl http://localhost:8000/health  # shows which engines came up
+curl http://localhost:8184/health  # shows which engines came up
 ```
 
-Then open http://localhost:8000/ and paste your provider API keys — the
+Then open http://localhost:8184/ and paste your provider API keys — the
 matching engines enable instantly, no restart needed.
 
 See [docs/deployment.md](docs/deployment.md) for engine keys, the built-in
@@ -51,7 +51,7 @@ network only (see [docs/deployment.md](docs/deployment.md)).
 uv sync
 uv run poe check      # ruff + mypy + pytest
 uv run poe dev        # dev server with auto-reload
-uv run poe start      # production-style server (uvicorn on :8000)
+uv run poe start      # production-style server (uvicorn on :8184)
 uv run poe live-test  # smoke-test real engines from config.yml (opt-in)
 ```
 

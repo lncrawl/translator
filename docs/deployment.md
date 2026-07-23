@@ -12,10 +12,10 @@ configured remotely after boot:
 
 ```bash
 docker compose up -d                 # pulls ghcr.io/lncrawl/translator:latest
-curl http://localhost:8000/health    # lists which engines came up
+curl http://localhost:8184/health    # lists which engines came up
 ```
 
-Then open http://localhost:8000/ and paste your provider API keys in the
+Then open http://localhost:8184/ and paste your provider API keys in the
 Providers table (or `PATCH /providers/{id}` with `{"api_key": "..."}`) —
 the matching engines enable instantly, no restart needed.
 
@@ -95,7 +95,7 @@ if you want an instruction-following local LLM lane instead.
 The API is completely open — no authentication. It is designed for
 localhost or a trusted internal network only. Anyone who can reach the
 port can translate, read provider API keys via `GET /config`, and change
-the config. Never expose port 8000 to the internet; if remote access is
+the config. Never expose port 8184 to the internet; if remote access is
 needed, put it behind a reverse proxy that handles auth + TLS.
 
 ## Runtime config API
@@ -107,25 +107,25 @@ to `config.yml`.
 
 ```bash
 # Read the live config
-curl -s http://localhost:8000/config
+curl -s http://localhost:8184/config
 
 # Set a provider's API key (enables its engines instantly)
-curl -s -X PATCH http://localhost:8000/providers/zai \
+curl -s -X PATCH http://localhost:8184/providers/zai \
   -H 'Content-Type: application/json' \
   -d '{"api_key": "your-key"}'
 
 # Swap a model in place
-curl -s -X PATCH http://localhost:8000/engines/zai-glm-flash \
+curl -s -X PATCH http://localhost:8184/engines/zai-glm-flash \
   -H 'Content-Type: application/json' \
   -d '{"model": "glm-5-flash"}'
 
 # Add a second model on an existing provider (shares its rate limits)
-curl -s -X POST http://localhost:8000/engines \
+curl -s -X POST http://localhost:8184/engines \
   -H 'Content-Type: application/json' \
   -d '{"id": "or-qwen", "provider": "openrouter", "model": "qwen/qwen3.5-235b-a22b:free"}'
 
 # Reorder lanes
-curl -s -X PUT http://localhost:8000/routing \
+curl -s -X PUT http://localhost:8184/routing \
   -H 'Content-Type: application/json' \
   -d '{"chapter": ["or-qwen", "zai-glm-flash"], "short_text": ["zai-glm-flash"]}'
 ```
@@ -168,15 +168,15 @@ persist across restarts.
 
 ```bash
 # Engine status, including quota state
-curl -s http://localhost:8000/engines | python3 -m json.tool
+curl -s http://localhost:8184/engines | python3 -m json.tool
 
 # Language detection (free, no engine quota)
-curl -s http://localhost:8000/detect \
+curl -s http://localhost:8184/detect \
   -H 'Content-Type: application/json' \
   -d '{"texts": ["斗破苍穹"]}'
 
 # Chapter translation with glossary pass-through
-curl -s http://localhost:8000/translate/html \
+curl -s http://localhost:8184/translate/html \
   -H 'Content-Type: application/json' \
   -d '{
     "html": "<p>萧炎盯着面前的老者。</p>",

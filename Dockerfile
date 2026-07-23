@@ -21,9 +21,9 @@ ENV TRANSLATOR_CONFIG=/data/config.yml
 # NLLB fallback model downloads land in the /data volume, not the container.
 ENV HF_HOME=/data/hf-cache
 USER app
-EXPOSE 8000
+EXPOSE 8184
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD \
-  python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+  python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8184/health', timeout=3)"
 
-CMD ["uvicorn", "translator.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "translator.main:app", "--host", "0.0.0.0", "--port", "8184"]

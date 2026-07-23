@@ -37,8 +37,8 @@ lint-check = [{ cmd = "ruff check ." }, { cmd = "ruff format --check ." }]
 typecheck = "mypy"
 test = "pytest -q"
 check = ["lint", "typecheck", "test"]
-dev = "fastapi dev translator/main.py"
-start = "uvicorn translator.main:app --host 0.0.0.0 --port 8000"
+dev = "fastapi dev translator/main.py --port 8184"
+start = "uvicorn translator.main:app --host 0.0.0.0 --port 8184"
 docker = "docker compose up -d --build"
 # Exercises every enabled engine in config.yml with two tiny real calls.
 live-test = { cmd = "pytest tests/test_live.py -s", env = { LIVE_ENGINE_TEST = "1" } }

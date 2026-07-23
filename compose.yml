@@ -5,7 +5,7 @@ services:
     image: ghcr.io/lncrawl/translator:latest
     build: .
     ports:
-      - "8000:8000"
+      - "8184:8184"
     volumes:
       # Holds config.yml and the downloaded NLLB model; bind-mount a
       # directory over /data to provide your own config.
