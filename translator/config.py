@@ -51,6 +51,9 @@ class ProviderConfig(BaseModel):
     kind: EngineKind = "openai"
     base_url: str | None = None
     api_key: str | None = None
+    # Extra named credentials beyond api_key (e.g. baidu app_id/secret_key). The
+    # fields a kind needs are declared on its Engine subclass (CREDENTIALS).
+    options: dict[str, str] = {}
     requires_key: bool = True  # false marks keyless hosts, i.e. local servers
     # Client-side rate limits, shared by all engines on this provider.
     rps: float | None = Field(default=None, gt=0)
@@ -58,13 +61,6 @@ class ProviderConfig(BaseModel):
     max_concurrency: int = Field(default=1, ge=1)
     # Informational; quota exhaustion is detected from provider responses.
     monthly_chars: int | None = Field(default=None, gt=0)
-
-    @property
-    def key_present(self) -> bool:
-        """True when no key is required or one is set."""
-        if self.kind == "nllb" or not self.requires_key:
-            return True
-        return bool(self.api_key)
 
 
 class EngineConfig(BaseModel):
@@ -94,6 +90,7 @@ class ResolvedEngine(BaseModel):
     kind: EngineKind
     base_url: str | None
     api_key: str | None = None
+    options: dict[str, str] = {}
     requires_key: bool = True
     model: str | None
     enabled: bool
@@ -101,14 +98,11 @@ class ResolvedEngine(BaseModel):
     chunk_tokens: int | None
     extra_body: dict[str, Any] = {}
 
-    @property
-    def available(self) -> bool:
-        """Enabled in config and the provider's key (if required) is set."""
-        if not self.enabled:
-            return False
-        if self.kind == "nllb" or not self.requires_key:
-            return True
-        return bool(self.api_key)
+    def credential(self, key: str) -> str | None:
+        """A named credential value: ``api_key`` or an entry in ``options``."""
+        if key == "api_key":
+            return self.api_key
+        return self.options.get(key)
 
 
 class RoutingConfig(BaseModel):
@@ -209,6 +203,7 @@ class AppConfig(BaseModel):
             kind=provider.kind,
             base_url=provider.base_url,
             api_key=provider.api_key,
+            options=provider.options,
             requires_key=provider.requires_key,
             model=engine.model,
             enabled=engine.enabled,

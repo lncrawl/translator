@@ -4,6 +4,7 @@ export const store = {
   config: null,
   engines: [],
   health: null,
+  credentialSchema: {},
   reachable: true,
   updatedAt: null,
 };
@@ -20,14 +21,16 @@ function notify() {
 }
 
 export async function refreshAll() {
-  const [config, engines, health] = await Promise.allSettled([
+  const [config, engines, health, schema] = await Promise.allSettled([
     api("/config"),
     api("/engines"),
     api("/health"),
+    api("/credential-schema"),
   ]);
   if (config.status === "fulfilled") store.config = config.value;
   if (engines.status === "fulfilled") store.engines = engines.value.engines;
   if (health.status === "fulfilled") store.health = health.value;
+  if (schema.status === "fulfilled") store.credentialSchema = schema.value;
   store.reachable = health.status === "fulfilled";
   store.updatedAt = new Date();
   notify();
@@ -51,8 +54,11 @@ export function inactiveEngineIds() {
 }
 
 export function keyState(provider) {
-  if (provider.api_key) return "set";
-  if (provider.kind === "nllb" || provider.requires_key === false)
+  const fields = store.credentialSchema[provider.kind] || [];
+  if (fields.length === 0 || provider.requires_key === false)
     return "none-needed";
-  return "missing";
+  const value = (f) =>
+    f.key === "api_key" ? provider.api_key : provider.options?.[f.key];
+  const required = fields.filter((f) => f.required);
+  return required.every((f) => value(f)) ? "set" : "missing";
 }

@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import get_args
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
 
 from . import __version__
-from .config import AppConfig
+from .config import AppConfig, EngineKind
 from .detect import detect_language
-from .engines import EngineStatus, capabilities_for
+from .engines import (
+    CredentialField,
+    EngineStatus,
+    capabilities_for,
+    credential_fields,
+    is_available,
+)
 from .router import Router
 from .schemas import (
     DetectionResult,
@@ -52,7 +59,7 @@ def root() -> FileResponse:
 @health_router.get("/health", tags=["service"])
 def health(request: Request) -> dict[str, object]:
     config = _config(request)
-    usable = [r.id for r in config.resolved_engines() if r.available]
+    usable = [r.id for r in config.resolved_engines() if is_available(r)]
     return {
         "status": "ok" if usable else "unconfigured",
         "version": __version__,
@@ -64,6 +71,12 @@ def health(request: Request) -> dict[str, object]:
 def get_config(request: Request) -> AppConfig:
     """The live config, including provider API keys."""
     return _config(request)
+
+
+@router.get("/credential-schema", tags=["config"])
+def credential_schema() -> dict[str, list[CredentialField]]:
+    """Per-kind credential fields, so the dashboard renders the right inputs."""
+    return {kind: credential_fields(kind) for kind in get_args(EngineKind)}
 
 
 @router.get("/engines", tags=["engines"])
@@ -80,7 +93,7 @@ def list_engines(request: Request) -> EnginesResponse:
                 provider=resolved.provider_id,
                 kind=resolved.kind,
                 model=resolved.model,
-                enabled=resolved.available,
+                enabled=is_available(resolved),
                 capabilities=EngineCapabilitiesInfo(
                     html=caps.html.value,
                     glossary=caps.glossary,

@@ -37,6 +37,23 @@ class EngineCapabilities:
     max_input_tokens: int | None = None
 
 
+@dataclass(frozen=True)
+class CredentialField:
+    """One credential a provider of this engine kind needs.
+
+    ``key`` is where the value lives on the resolved engine: ``"api_key"`` for
+    the conventional single secret, otherwise a key in the provider ``options``
+    bag (e.g. ``"secret_key"``). Drives the availability gate and the
+    dashboard's dynamic credential form.
+    """
+
+    key: str
+    label: str
+    secret: bool = True
+    required: bool = True
+    description: str | None = None
+
+
 @dataclass
 class HtmlResult:
     html: str
@@ -58,6 +75,9 @@ class EngineError(Exception):
 
 class Engine(abc.ABC):
     """A translation backend. Instances are long-lived and concurrency-safe."""
+
+    # Credentials a provider of this kind needs; empty means keyless.
+    CREDENTIALS: list[CredentialField] = []
 
     def __init__(self, config: ResolvedEngine) -> None:
         self.config = config

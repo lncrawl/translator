@@ -4,14 +4,22 @@ import httpx
 import pytest
 from helpers import make_resolved
 
+from translator.engines import is_available
 from translator.engines.baidu import BaiduEngine
 from translator.engines.base import ErrorKind, HtmlSupport
 
 
 def make_engine(
-    handler: httpx.MockTransport, *, api_key: str = "app123:secret"
+    handler: httpx.MockTransport,
+    *,
+    options: dict[str, str] | None = None,
 ) -> BaiduEngine:
-    config = make_resolved("baidu", kind="baidu", base_url=None, api_key=api_key)
+    config = make_resolved(
+        "baidu",
+        kind="baidu",
+        base_url=None,
+        options=options or {"app_id": "app123", "secret_key": "secret"},
+    )
     engine = BaiduEngine(config)
     engine._client = httpx.AsyncClient(transport=handler)
     return engine
@@ -24,8 +32,23 @@ def test_capabilities_are_text_only() -> None:
     assert caps.glossary is False
 
 
-def test_malformed_key_rejected() -> None:
-    config = make_resolved("baidu", kind="baidu", base_url=None, api_key="appid-only")
+def test_availability_gated_on_options() -> None:
+    without = make_resolved("baidu", kind="baidu", base_url=None, options={})
+    assert is_available(without) is False
+    with_creds = make_resolved(
+        "baidu",
+        kind="baidu",
+        base_url=None,
+        options={"app_id": "a", "secret_key": "s"},
+    )
+    assert is_available(with_creds) is True
+
+
+def test_incomplete_credentials_rejected() -> None:
+    # Only app_id, no secret_key.
+    config = make_resolved(
+        "baidu", kind="baidu", base_url=None, options={"app_id": "app123"}
+    )
     with pytest.raises(ValueError):
         BaiduEngine(config)
 

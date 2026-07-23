@@ -46,6 +46,7 @@ class ProviderPatch(BaseModel):
     kind: EngineKind | None = None
     base_url: str | None = None
     api_key: str | None = None
+    options: dict[str, str] | None = None
     requires_key: bool | None = None
     rps: float | None = Field(default=None, gt=0)
     rpm: float | None = Field(default=None, gt=0)

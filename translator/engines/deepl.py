@@ -18,6 +18,7 @@ from ..config import ResolvedEngine
 from ..languages import deepl_source_lang, deepl_target_lang
 from ..schemas import HtmlContext
 from .base import (
+    CredentialField,
     Engine,
     EngineCapabilities,
     EngineError,
@@ -41,6 +42,12 @@ def _seconds_until_next_month() -> int:
 
 
 class DeepLEngine(Engine):
+    CREDENTIALS = [
+        CredentialField(
+            "api_key", "API key", description="DeepL Free keys end in ':fx'"
+        )
+    ]
+
     def __init__(self, config: ResolvedEngine) -> None:
         super().__init__(config)
         key = config.api_key

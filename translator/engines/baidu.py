@@ -20,6 +20,7 @@ import httpx
 from ..config import ResolvedEngine
 from ..languages import baidu_lang
 from .base import (
+    CredentialField,
     Engine,
     EngineCapabilities,
     EngineError,
@@ -38,13 +39,22 @@ _QUOTA_CODES = {"54004"}
 
 
 class BaiduEngine(Engine):
+    CREDENTIALS = [
+        CredentialField(
+            "app_id", "App ID", secret=False, description="From fanyi-api.baidu.com"
+        ),
+        CredentialField(
+            "secret_key", "Secret key", description="Paired with the App ID"
+        ),
+    ]
+
     def __init__(self, config: ResolvedEngine) -> None:
         super().__init__(config)
-        credential = config.api_key or ""
-        app_id, _, secret = credential.partition(":")
+        app_id = config.credential("app_id")
+        secret = config.credential("secret_key")
         if not app_id or not secret:
             raise ValueError(
-                f"engine {config.id!r}: baidu requires api_key as 'app_id:secret_key'"
+                f"engine {config.id!r}: baidu requires 'app_id' and 'secret_key'"
             )
         self._app_id = app_id
         self._secret = secret

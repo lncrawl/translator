@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from translator.config import AppConfig, load_config, save_config
+from translator.engines import is_available
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -13,7 +14,7 @@ def test_example_config_loads_and_validates() -> None:
     assert {e.id for e in config.engines} >= {"zai-glm-flash", "gemini-flash"}
     # The template ships without keys, so only the keyless NLLB lane routes.
     assert config.routing.chapter == ["nllb"]
-    assert [r.id for r in config.resolved_engines() if r.available] == ["nllb"]
+    assert [r.id for r in config.resolved_engines() if is_available(r)] == ["nllb"]
     resolved = config.resolved("zai-glm-flash")
     assert resolved is not None
     assert resolved.base_url == "https://api.z.ai/api/paas/v4"
@@ -94,11 +95,12 @@ def test_default_config_engines_need_keys() -> None:
     # keyless auth, and local NLLB) are available — no API engine can fire
     # accidentally. Setting a provider's key remotely lights up its engines.
     config = load_config(Path("/nonexistent/config.yml"))
-    assert [r.id for r in config.resolved_engines() if r.available] == ["bing", "nllb"]
+    available = [r.id for r in config.resolved_engines() if is_available(r)]
+    assert available == ["bing", "nllb"]
     provider = config.provider("zai")
     assert provider is not None
     provider.api_key = "k"
-    assert [r.id for r in config.resolved_engines() if r.available] == [
+    assert [r.id for r in config.resolved_engines() if is_available(r)] == [
         "zai-glm-flash",
         "bing",
         "nllb",
@@ -130,14 +132,14 @@ def test_engine_unavailable_without_key() -> None:
     config = AppConfig.model_validate(data)
     resolved = config.resolved("a")
     assert resolved is not None
-    assert resolved.available is False
+    assert is_available(resolved) is False
 
     provider = config.provider("a")
     assert provider is not None
     provider.api_key = "secret"
     resolved = config.resolved("a")
     assert resolved is not None
-    assert resolved.available is True
+    assert is_available(resolved) is True
 
     keyless = AppConfig.model_validate(
         {
@@ -153,4 +155,4 @@ def test_engine_unavailable_without_key() -> None:
     )
     resolved = keyless.resolved("a")
     assert resolved is not None
-    assert resolved.available is True
+    assert is_available(resolved) is True

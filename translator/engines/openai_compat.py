@@ -17,6 +17,7 @@ from ..html_tools import count_cjk, repair_untagged_output, strip_text, tag_name
 from ..languages import base as base_lang
 from ..schemas import HtmlContext
 from .base import (
+    CredentialField,
     Engine,
     EngineCapabilities,
     EngineError,
@@ -35,6 +36,12 @@ _TIMEOUT = httpx.Timeout(connect=15.0, read=900.0, write=60.0, pool=60.0)
 
 
 class OpenAICompatEngine(Engine):
+    CREDENTIALS = [
+        CredentialField(
+            "api_key", "API key", description="Bearer token for the provider"
+        )
+    ]
+
     def __init__(self, config: ResolvedEngine) -> None:
         super().__init__(config)
         if not config.base_url:

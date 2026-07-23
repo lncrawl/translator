@@ -7,6 +7,7 @@ import {
   goBack,
   dropdown,
 } from "../ui.js";
+import { icon } from "../icons.js";
 import { store, mutate } from "../store.js";
 
 export const id = "provider-edit";
@@ -86,24 +87,23 @@ function render() {
   });
   const kindSelect = dropdown({
     ariaLabel: "Provider kind",
-    options: ["openai", "deepl", "nllb"].map((k) => ({ value: k, label: k })),
+    options: ["openai", "deepl", "nllb", "bing", "baidu"].map((k) => ({
+      value: k,
+      label: k,
+    })),
     value: provider?.kind || "openai",
+    onChange: () => renderCreds(),
   });
   const baseUrlInput = el("input", {
     type: "text",
     value: provider?.base_url || "",
     placeholder: "https://api.example.com/v1",
   });
-  const keyInput = el("input", {
-    type: "password",
-    value: provider?.api_key || "",
-    autocomplete: "off",
-    placeholder: "paste token",
-  });
   const reqKeyInput = el("input", {
     type: "checkbox",
     checked: (provider ? provider.requires_key !== false : true) ? "" : null,
     style: "width:auto;margin-right:6px",
+    onchange: () => renderCreds(),
   });
   const rpsInput = el("input", {
     type: "number",
@@ -130,17 +130,100 @@ function render() {
     value: provider?.monthly_chars ?? "",
   });
 
+  // Credentials are declared per kind by the backend (/credential-schema) and
+  // rendered dynamically; the eye toggle reveals a secret input.
+  const reqKeyRow = el(
+    "label",
+    { class: "field" },
+    el(
+      "span",
+      {},
+      reqKeyInput,
+      "Requires an API key (uncheck for keyless local servers)",
+    ),
+  );
+  const credsBox = el("div", {});
+  let credInputs = {};
+
+  const schemaFields = () => store.credentialSchema[kindSelect.value] || [];
+
+  function initialValue(key) {
+    if (!provider) return "";
+    if (key === "api_key") return provider.api_key || "";
+    return provider.options?.[key] || "";
+  }
+
+  function secretControl(input) {
+    const button = el(
+      "button",
+      {
+        type: "button",
+        class: "ghost small",
+        "aria-label": "Show value",
+        onclick: () => {
+          const reveal = input.type === "password";
+          input.type = reveal ? "text" : "password";
+          button.replaceChildren(icon(reveal ? "eye-off" : "eye", 16));
+          button.setAttribute(
+            "aria-label",
+            reveal ? "Hide value" : "Show value",
+          );
+        },
+      },
+      icon("eye", 16),
+    );
+    return el(
+      "div",
+      { style: "display:flex;gap:6px;align-items:center" },
+      input,
+      button,
+    );
+  }
+
+  function renderCreds() {
+    const fields = schemaFields();
+    reqKeyRow.style.display = fields.length ? "" : "none";
+    credInputs = {};
+    if (!fields.length || !reqKeyInput.checked) {
+      credsBox.replaceChildren();
+      return;
+    }
+    credsBox.replaceChildren(
+      ...fields.map((f) => {
+        const input = el("input", {
+          type: f.secret ? "password" : "text",
+          value: initialValue(f.key),
+          autocomplete: "off",
+          placeholder: f.secret ? "paste token" : "",
+          style: "flex:1;min-width:0",
+        });
+        credInputs[f.key] = input;
+        return el(
+          "label",
+          { class: "field" },
+          el("span", {}, f.label),
+          f.secret ? secretControl(input) : input,
+          f.description ? el("small", { class: "hint" }, f.description) : null,
+        );
+      }),
+    );
+  }
+
+  renderCreds();
+
   const collect = () =>
     JSON.stringify([
       idInput.value,
       kindSelect.value,
       baseUrlInput.value,
-      keyInput.value,
       reqKeyInput.checked,
       rpsInput.value,
       rpmInput.value,
       concInput.value,
       monthlyInput.value,
+      Object.fromEntries(
+        Object.entries(credInputs).map(([k, input]) => [k, input.value]),
+      ),
     ]);
   baseline = collect();
   getState = collect;
@@ -155,10 +238,18 @@ function render() {
       class: "primary",
       onclick: (event) =>
         busy(event.target, async () => {
+          const options = {};
+          let apiKey = null;
+          for (const f of schemaFields()) {
+            const value = (credInputs[f.key]?.value || "").trim();
+            if (f.key === "api_key") apiKey = value || null;
+            else if (value) options[f.key] = value;
+          }
           const payload = {
             kind: kindSelect.value,
             base_url: baseUrlInput.value.trim() || null,
-            api_key: keyInput.value.trim() || null,
+            api_key: apiKey,
+            options,
             requires_key: reqKeyInput.checked,
             rps: numberOrNull(rpsInput),
             rpm: numberOrNull(rpmInput),
@@ -222,21 +313,12 @@ function render() {
         { style: "margin-top:10px" },
         field("Base URL (openai kind)", baseUrlInput),
       ),
-      field("API key", keyInput),
-      el(
-        "label",
-        { class: "field" },
-        el(
-          "span",
-          {},
-          reqKeyInput,
-          "Requires an API key (uncheck for keyless local servers)",
-        ),
-      ),
+      reqKeyRow,
+      credsBox,
       el(
         "p",
         { class: "hint", style: "margin:6px 0 0" },
-        "The key is stored in the config file; engines on this provider stay disabled until it is set.",
+        "Credentials are stored in the config file; engines on this provider stay disabled until they are set.",
       ),
       el(
         "div",

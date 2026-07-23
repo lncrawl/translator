@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 
 from .config import AppConfig, save_config
-from .engines import build_engine
+from .engines import build_engine, is_available
 from .router import Router
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def build_router(config: AppConfig) -> Router:
     engines = []
     for resolved in config.resolved_engines():
-        if not resolved.available:
+        if not is_available(resolved):
             logger.warning(
                 "engine %s disabled: %s",
                 resolved.id,

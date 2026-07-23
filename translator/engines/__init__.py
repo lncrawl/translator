@@ -1,7 +1,8 @@
 """Translation engine implementations."""
 
-from ..config import ResolvedEngine
+from ..config import EngineKind, ResolvedEngine
 from .base import (
+    CredentialField,
     Engine,
     EngineCapabilities,
     EngineError,
@@ -12,6 +13,7 @@ from .base import (
 )
 
 __all__ = [
+    "CredentialField",
     "Engine",
     "EngineCapabilities",
     "EngineError",
@@ -21,6 +23,9 @@ __all__ = [
     "HtmlSupport",
     "build_engine",
     "capabilities_for",
+    "credential_fields",
+    "is_available",
+    "is_configured",
 ]
 
 
@@ -62,3 +67,37 @@ def capabilities_for(config: ResolvedEngine) -> EngineCapabilities:
         glossary=True,
         max_input_tokens=config.max_input_tokens,
     )
+
+
+def credential_fields(kind: EngineKind) -> list[CredentialField]:
+    """The credentials a provider of ``kind`` needs — declared on the engine
+    class, surfaced here without instantiating it (parallel to capabilities)."""
+    if kind == "deepl":
+        from .deepl import DeepLEngine
+
+        return DeepLEngine.CREDENTIALS
+    if kind == "baidu":
+        from .baidu import BaiduEngine
+
+        return BaiduEngine.CREDENTIALS
+    if kind in ("nllb", "bing"):
+        return []
+    from .openai_compat import OpenAICompatEngine
+
+    return OpenAICompatEngine.CREDENTIALS
+
+
+def is_configured(resolved: ResolvedEngine) -> bool:
+    """Whether every required credential for this engine's kind is set."""
+    if not resolved.requires_key:
+        return True
+    return all(
+        resolved.credential(field.key)
+        for field in credential_fields(resolved.kind)
+        if field.required
+    )
+
+
+def is_available(resolved: ResolvedEngine) -> bool:
+    """Enabled in config and fully configured — safe to build and route to."""
+    return resolved.enabled and is_configured(resolved)
