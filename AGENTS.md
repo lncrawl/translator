@@ -70,6 +70,9 @@ Tasks are defined with poethepoet in `pyproject.toml` (`uv run poe <task>`):
 - **FastAPI** for the HTTP layer (matches lncrawl's stack).
 - Lint/format with **ruff** (`uv run ruff check .`, `uv run ruff format .`).
 - Type-check before declaring work complete.
+- **No useless code comments.** Comment only non-obvious constraints or
+  gotchas the code cannot express, one line max. Never narrate what the code
+  does, restate names, or explain a change to the reviewer.
 - Keep the image small: multi-stage Dockerfile, models mounted/downloaded at
   runtime, not baked into the image.
 

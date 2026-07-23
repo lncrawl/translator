@@ -11,12 +11,13 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from . import __version__
 from .admin import admin_router
-from .api import health_router, router
+from .api import STATIC_DIR, health_router, router
 from .config import AppConfig, load_config, resolve_config_path
 from .errors import ApiError
 from .router import Router
@@ -98,6 +99,7 @@ def create_app(
         return await call_next(request)
 
     app.state.store = store
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(health_router)
     app.include_router(router)
     app.include_router(admin_router)

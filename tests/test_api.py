@@ -47,6 +47,13 @@ def test_root_serves_demo_page(boot_client: TestClient) -> None:
     assert "<title>translator" in resp.text
 
 
+def test_static_app_assets_served(boot_client: TestClient) -> None:
+    assert boot_client.get("/static/app.css").status_code == 200
+    resp = boot_client.get("/static/js/app.js")
+    assert resp.status_code == 200
+    assert "javascript" in resp.headers["content-type"]
+
+
 def test_health_reports_enabled_engines(boot_client: TestClient) -> None:
     body = boot_client.get("/health").json()
     assert body["status"] == "ok"

@@ -105,7 +105,7 @@ async def create_provider(payload: ProviderConfig, request: Request) -> Provider
     return payload
 
 
-@admin_router.patch("/providers/{provider_id}", tags=["providers"])
+@admin_router.patch("/providers/{provider_id:path}", tags=["providers"])
 async def update_provider(
     provider_id: str, payload: ProviderPatch, request: Request
 ) -> ProviderConfig:
@@ -124,7 +124,9 @@ async def update_provider(
     return updated
 
 
-@admin_router.delete("/providers/{provider_id}", status_code=204, tags=["providers"])
+@admin_router.delete(
+    "/providers/{provider_id:path}", status_code=204, tags=["providers"]
+)
 async def delete_provider(provider_id: str, request: Request) -> Response:
     store = _store(request)
     if store.config.provider(provider_id) is None:
@@ -156,7 +158,7 @@ async def create_engine(payload: EngineConfig, request: Request) -> EngineConfig
     return payload
 
 
-@admin_router.patch("/engines/{engine_id}", tags=["engines"])
+@admin_router.patch("/engines/{engine_id:path}", tags=["engines"])
 async def update_engine(
     engine_id: str, payload: EnginePatch, request: Request
 ) -> EngineConfig:
@@ -175,7 +177,7 @@ async def update_engine(
     return updated
 
 
-@admin_router.delete("/engines/{engine_id}", status_code=204, tags=["engines"])
+@admin_router.delete("/engines/{engine_id:path}", status_code=204, tags=["engines"])
 async def delete_engine(engine_id: str, request: Request) -> Response:
     """Remove an engine; it is also stripped from all routing lanes."""
     store = _store(request)

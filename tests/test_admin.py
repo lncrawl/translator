@@ -86,6 +86,17 @@ def test_duplicate_engine_rejected(client: TestClient) -> None:
     assert resp.status_code == 409
 
 
+def test_engine_id_with_slash_and_colon(client: TestClient) -> None:
+    engine_id = "docker.io/qwen3.5:4B-UD-Q4_K_XL"
+    resp = client.post("/engines", json={"id": engine_id, "provider": "p1"})
+    assert resp.status_code == 201
+    quoted = "/engines/docker.io%2Fqwen3.5%3A4B-UD-Q4_K_XL"
+    resp = client.patch(quoted, json={"model": "m"})
+    assert resp.status_code == 200
+    assert client.delete(quoted).status_code == 204
+    assert all(e["id"] != engine_id for e in client.get("/config").json()["engines"])
+
+
 def test_delete_engine_strips_routing(client: TestClient) -> None:
     resp = client.delete("/engines/e1")
     assert resp.status_code == 204

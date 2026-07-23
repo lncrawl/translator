@@ -25,7 +25,8 @@ from .schemas import (
     TranslateTextResponse,
 )
 
-INDEX_HTML = Path(__file__).resolve().parent / "static" / "index.html"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+INDEX_HTML = STATIC_DIR / "index.html"
 
 
 def _config(request: Request) -> AppConfig:
@@ -44,7 +45,7 @@ router = APIRouter()
 
 @health_router.get("/", include_in_schema=False)
 def root() -> FileResponse:
-    """Demo & configuration UI (self-contained static page)."""
+    """Dashboard app shell; assets are served from /static."""
     return FileResponse(INDEX_HTML, media_type="text/html")
 
 
