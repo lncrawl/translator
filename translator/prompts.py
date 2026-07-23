@@ -54,7 +54,7 @@ def build_text_messages(
         f"You are a professional translator of {lang_name(source_lang)} web novels"
         f" into {lang_name(target_lang)}. You translate titles, names, tags, and"
         " synopses so they read naturally while staying faithful to the source."
-        " Proper nouns are romanized or translated consistently."
+        f" Proper nouns are rendered consistently in {lang_name(target_lang)}."
     )
     parts = [
         f"Translate each string in the JSON array below from"
@@ -119,9 +119,12 @@ def build_html_messages(
             " containing a JSON object of proper nouns you encountered that are"
             " NOT in the glossary (characters, places, organizations, techniques,"
             " titles). Each key MUST be the term exactly as written in the"
-            " untranslated source text; each value is the translation you chose"
-            ' — for example {"萧炎": "Xiao Yan", "斗气大陆": "Dou Qi Continent"}.'
-            " Never use a translated term as a key. Use {} if there are none."
+            f" untranslated source text; each value MUST be the"
+            f" {lang_name(target_lang)} rendering you used in your translation"
+            f" above — written in {lang_name(target_lang)}, never in any other"
+            ' language: {"<term in source text>": "<term as it appears in your'
+            ' translation>"}. Never use a translated term as a key. Use {} if'
+            " there are none."
         )
 
     parts: list[str] = []
