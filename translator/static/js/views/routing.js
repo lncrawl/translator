@@ -46,7 +46,6 @@ export function mount(root) {
     el(
       "div",
       { class: "card" },
-      el("h2", {}, "Routing lanes"),
       el(
         "p",
         { class: "hint" },
@@ -190,6 +189,13 @@ function render() {
         },
       });
       addSelect.root.style.maxWidth = "240px";
+      // A hidden engine is either turned off in config or missing its key —
+      // distinct states that must not share the "waiting for a key" label.
+      const isDisabled = (i) =>
+        config.engines.find((e) => e.id === i)?.enabled === false;
+      const disabledIds = hidden.filter(isDisabled);
+      const unkeyedIds = hidden.filter((i) => !isDisabled(i));
+      const note = (text) => el("p", { class: "meta" }, text);
       return el(
         "div",
         { class: "lane" },
@@ -198,12 +204,13 @@ function render() {
           ? list
           : el("p", { class: "meta" }, "empty — nothing routes here"),
         unused.length ? addSelect.root : "",
-        hidden.length
-          ? el(
-              "p",
-              { class: "meta" },
-              `${hidden.length} more waiting for an API key: ${hidden.join(", ")}`,
+        unkeyedIds.length
+          ? note(
+              `${unkeyedIds.length} more waiting for an API key: ${unkeyedIds.join(", ")}`,
             )
+          : "",
+        disabledIds.length
+          ? note(`${disabledIds.length} disabled: ${disabledIds.join(", ")}`)
           : "",
       );
     }),

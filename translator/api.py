@@ -87,6 +87,7 @@ def list_engines(request: Request) -> EnginesResponse:
     for resolved in config.resolved_engines():
         caps = capabilities_for(resolved)
         status = engine_router.status(resolved.id) or EngineStatus.DISABLED
+        slots = engine_router.concurrency(resolved.id)
         infos.append(
             EngineInfo(
                 id=resolved.id,
@@ -101,6 +102,8 @@ def list_engines(request: Request) -> EnginesResponse:
                 ),
                 status=status.value,
                 retry_at=engine_router.retry_at(resolved.id),
+                slots_free=slots[0] if slots else None,
+                slots_total=slots[1] if slots else None,
             )
         )
     return EnginesResponse(engines=infos)

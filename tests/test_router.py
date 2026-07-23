@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from helpers import FakeEngine, make_config
 
@@ -13,6 +15,21 @@ def make_router(*engines: FakeEngine, config=None, retries: int = 0) -> Router:
     return Router(
         list(engines), config, transient_retries=retries, backoff_base_seconds=0
     )
+
+
+class GatedEngine(FakeEngine):
+    """Holds its concurrency slot until released, so a provider can be pinned
+    'busy' on demand. ``started`` fires once the slot is taken."""
+
+    def __init__(self, engine_id: str) -> None:
+        super().__init__(engine_id)
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def translate_segments(self, segments, **kwargs):  # type: ignore[no-untyped-def]
+        self.started.set()
+        await self.release.wait()
+        return await FakeEngine.translate_segments(self, segments, **kwargs)
 
 
 async def test_translate_text_happy_path() -> None:
@@ -46,6 +63,62 @@ async def test_quota_error_falls_back_to_next_lane() -> None:
     await router.translate_text(TranslateTextRequest(texts=["hi"]))
     assert len(a.segment_calls) == 1
     assert len(b.segment_calls) == 2
+
+
+async def test_busy_engine_falls_back_to_next_available() -> None:
+    # a's only concurrency slot is held; the next request should spill to b
+    # rather than queueing behind a.
+    a = GatedEngine("a")
+    b = FakeEngine("b")
+    router = make_router(a, b)
+    held = asyncio.create_task(
+        router.translate_text(TranslateTextRequest(texts=["hi"]))
+    )
+    await a.started.wait()
+
+    resp = await router.translate_text(TranslateTextRequest(texts=["yo"]))
+    assert resp.engine == "b"
+
+    a.release.set()
+    assert (await held).engine == "a"
+
+
+async def test_concurrency_reports_free_slots() -> None:
+    a = GatedEngine("a")
+    router = make_router(a)
+    assert router.concurrency("a") == (1, 1)  # idle: all free
+
+    held = asyncio.create_task(
+        router.translate_text(TranslateTextRequest(texts=["hi"]))
+    )
+    await a.started.wait()
+    assert router.concurrency("a") == (0, 1)  # one in flight
+
+    a.release.set()
+    await held
+    assert router.concurrency("a") == (1, 1)  # slot returned
+    assert router.concurrency("ghost") is None
+
+
+async def test_all_busy_waits_in_lane_order() -> None:
+    # When the only engine is busy, the request waits for it (no false 503)
+    # and runs on it once the slot frees.
+    a = GatedEngine("a")
+    router = make_router(a)
+    held = asyncio.create_task(
+        router.translate_text(TranslateTextRequest(texts=["hi"]))
+    )
+    await a.started.wait()
+
+    waiting = asyncio.create_task(
+        router.translate_text(TranslateTextRequest(texts=["yo"]))
+    )
+    await asyncio.sleep(0)  # let it reach the semaphore wait
+    assert not waiting.done()  # holding, not rejected
+
+    a.release.set()
+    assert (await held).engine == "a"
+    assert (await waiting).engine == "a"
 
 
 async def test_transient_error_retries_same_engine() -> None:

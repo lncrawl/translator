@@ -12,20 +12,19 @@ export function mount(root) {
   root.append(
     el(
       "div",
-      { class: "card" },
+      { class: "page-actions" },
       el(
-        "div",
-        { class: "card-head" },
-        el("h2", {}, "Providers"),
-        el(
-          "button",
-          {
-            class: "primary",
-            onclick: () => (location.hash = "#/provider-edit"),
-          },
-          "Add provider",
-        ),
+        "button",
+        {
+          class: "primary",
+          onclick: () => (location.hash = "#/provider-edit"),
+        },
+        "Add provider",
       ),
+    ),
+    el(
+      "div",
+      { class: "card" },
       el(
         "p",
         { class: "hint" },

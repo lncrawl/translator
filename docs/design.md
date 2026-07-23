@@ -179,12 +179,17 @@ Routing sits above engines:
   (`short_text` vs `chapter`). E.g. chapters try `zai-glm-flash` →
   `cerebras-glm` → `mistral-large` → `nllb`; short texts may prefer
   `deepl` first.
-- **Rate limiting**: per-engine client-side token bucket (rpm/rps/tpd from
-  config) so we never hammer a free tier into a ban.
-- **Fallback**: on `quota` errors the engine is marked exhausted until its
-  window resets and the next lane is tried; `transient` errors retry with
-  backoff on the same engine; `fatal` skips to next lane immediately.
-- **Concurrency**: per-engine max-concurrency (free tiers often allow 1).
+- **Rate limiting**: per-*provider* client-side pacing (rpm/rps from config),
+  shared by every engine on the account, so we never hammer a free tier into
+  a ban.
+- **Fallback**: on `quota` errors the whole provider is marked exhausted until
+  its window resets and the next lane is tried; `transient` errors retry with
+  backoff on the same engine; `fatal` skips to the next lane immediately.
+- **Concurrency**: per-*provider* max-concurrency (free tiers often allow 1),
+  shared across the account's engines. A busy provider (all slots in use) is
+  skipped for the next lane engine that can start now; the request waits only
+  if every eligible engine is busy — priority ordering with load spilling
+  down the lane, not a rejection.
 
 ## HTML handling
 

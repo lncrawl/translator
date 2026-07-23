@@ -14,7 +14,6 @@ export function mount(root) {
     el(
       "div",
       { class: "card" },
-      el("h2", {}, "Raw config"),
       el(
         "p",
         { class: "hint" },

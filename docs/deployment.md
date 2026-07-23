@@ -192,7 +192,9 @@ curl -s -X PATCH http://localhost:8184/engines/zai-glm-flash \
   -H 'Content-Type: application/json' \
   -d '{"model": "glm-5-flash"}'
 
-# Add a second model on an existing provider (shares its rate limits)
+# Add a second model on an existing provider (shares its rate limits).
+# An enabled engine is appended to both routing lanes by default so it is
+# used right away; pass ?route=false to add it without routing it.
 curl -s -X POST http://localhost:8184/engines \
   -H 'Content-Type: application/json' \
   -d '{"id": "or-qwen", "provider": "openrouter", "model": "qwen/qwen3.5-235b-a22b:free"}'
@@ -205,14 +207,21 @@ curl -s -X PUT http://localhost:8184/routing \
 
 Endpoints: `GET /config`, `PUT /config`, `PUT /config/failure-policy`,
 `PUT /routing`, `POST/PATCH/DELETE /providers[/{id}]`,
-`POST/PATCH/DELETE /engines[/{id}]`. Deleting an engine also removes it from
-routing lanes; deleting a provider requires deleting its engines first.
+`POST/PATCH/DELETE /engines[/{id}]`. Creating an enabled engine appends it to
+both routing lanes by default (`?route=false` to skip); deleting an engine
+removes it from the lanes; deleting a provider requires deleting its engines
+first.
 
 Note: the compose file mounts `config.yml` read-write so API changes
 persist across restarts.
 
 ## Failure handling
 
+- **Busy engine** (its provider's `max_concurrency` slots are all in use):
+  skipped in favor of the next lane engine that can start immediately, so
+  load spills down the lane instead of queueing behind the top engine. If
+  *every* eligible engine is busy the request waits, in lane order — it is
+  never rejected just for being busy.
 - **Transient errors** (5xx, timeouts, 429 with a short `Retry-After`):
   retried on the same engine with exponential backoff
   (`failure_policy.transient_retries`, default 2).

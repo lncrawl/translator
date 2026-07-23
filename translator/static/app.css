@@ -372,10 +372,9 @@ main {
   color: var(--muted);
 }
 .hint {
-  color: var(--muted);
-  font-size: 13px;
+  color: var(--text);
+  font-size: 14px;
   margin: 2px 0 14px;
-  max-width: 85ch;
 }
 .field-hint {
   color: var(--muted);
@@ -862,6 +861,15 @@ pre {
 }
 .card-head h2 {
   margin: 0;
+}
+
+.page-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 
 .icon-btn {

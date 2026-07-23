@@ -27,7 +27,6 @@ export function mount(root) {
     el(
       "div",
       { class: "card" },
-      el("h2", {}, "Failure policy"),
       el(
         "p",
         { class: "hint" },

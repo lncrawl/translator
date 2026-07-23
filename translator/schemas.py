@@ -59,6 +59,10 @@ class EngineInfo(BaseModel):
     status: EngineStatusLiteral
     # When a quota-exhausted or cooling-down engine becomes eligible again.
     retry_at: datetime | None = None
+    # Provider concurrency slots (shared by the provider's engines): how many
+    # are free right now and the total. None when the engine isn't active.
+    slots_free: int | None = None
+    slots_total: int | None = None
 
 
 class EnginesResponse(BaseModel):

@@ -23,7 +23,7 @@ export function mount(root) {
       el(
         "p",
         { class: "hint" },
-        "Live routing eligibility, cooldowns, and quota state.",
+        "Live routing eligibility, cooldowns, quota state, and free concurrency slots (shared per provider).",
       ),
       enginesBox,
     ),
@@ -119,11 +119,25 @@ export function onStore() {
             )
           : null,
       ),
+      el(
+        "td",
+        {},
+        engine.slots_total != null
+          ? el(
+              "span",
+              {
+                class: engine.slots_free === 0 ? "status-warn" : "status-ok",
+                title: `${engine.slots_free} of ${engine.slots_total} concurrency slots free`,
+              },
+              `${engine.slots_free} / ${engine.slots_total}`,
+            )
+          : el("span", { class: "meta" }, "—"),
+      ),
     ),
   );
   enginesBox.replaceChildren(
     engines.length
-      ? dataTable(["Engine", "Provider", "Model", "Status"], rows)
+      ? dataTable(["Engine", "Provider", "Model", "Status", "Slots"], rows)
       : el("div", { class: "inline-note" }, "No engines configured."),
   );
 }

@@ -32,33 +32,28 @@ export function mount(root) {
   root.append(
     el(
       "div",
-      { class: "card" },
+      { class: "page-actions" },
+      filterSelect.root,
       el(
-        "div",
-        { class: "card-head" },
-        el("h2", {}, "Engines"),
-        el(
-          "div",
-          { class: "row", style: "gap:8px" },
-          filterSelect.root,
-          el(
-            "button",
-            {
-              class: "primary",
-              onclick: () => {
-                if (!store.config?.providers.length) {
-                  toast("Create a provider first", "error");
-                  return;
-                }
-                location.hash = filterProvider
-                  ? `#/engine-edit?provider=${encodeURIComponent(filterProvider)}`
-                  : "#/engine-edit";
-              },
-            },
-            "Add engine",
-          ),
-        ),
+        "button",
+        {
+          class: "primary",
+          onclick: () => {
+            if (!store.config?.providers.length) {
+              toast("Create a provider first", "error");
+              return;
+            }
+            location.hash = filterProvider
+              ? `#/engine-edit?provider=${encodeURIComponent(filterProvider)}`
+              : "#/engine-edit";
+          },
+        },
+        "Add engine",
       ),
+    ),
+    el(
+      "div",
+      { class: "card" },
       el(
         "p",
         { class: "hint" },

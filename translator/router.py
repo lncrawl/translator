@@ -48,9 +48,19 @@ class _ProviderRuntime:
     rate_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     next_allowed: float = 0.0
     quota_resets_at: datetime | None = None
+    active_requests: int = 0
 
     def quota_blocked(self, now: datetime) -> bool:
         return self.quota_resets_at is not None and now < self.quota_resets_at
+
+    def has_free_slot(self) -> bool:
+        """True if a concurrency slot can be taken right now without queueing.
+
+        The event loop is single-threaded and ``Semaphore.acquire()`` on a
+        free slot returns without suspending, so a caller that checks this and
+        immediately enters ``async with semaphore`` cannot be raced out of it.
+        """
+        return not self.semaphore.locked()
 
     async def throttle(self) -> None:
         async with self.rate_lock:
@@ -142,6 +152,17 @@ class Router:
         runtime = self._runtimes.get(engine_id)
         return runtime.retry_at(datetime.now(UTC)) if runtime else None
 
+    def concurrency(self, engine_id: str) -> tuple[int, int] | None:
+        """(free, total) concurrency slots for an engine's provider right now,
+        or None if the engine isn't active. Slots are shared by every engine
+        on the provider, so siblings report the same figures."""
+        runtime = self._runtimes.get(engine_id)
+        if runtime is None:
+            return None
+        total = runtime.provider.config.max_concurrency
+        free = max(0, total - runtime.provider.active_requests)
+        return free, total
+
     async def close(self) -> None:
         for runtime in self._runtimes.values():
             await runtime.engine.close()
@@ -182,54 +203,47 @@ class Router:
     ) -> tuple[T, str]:
         """Try candidates in lane order; retry transient errors per engine.
 
-        Quota errors bench the whole provider until its reset; repeated
-        failures of any other kind bench the engine for a cooldown period.
+        A busy engine (its provider's concurrency slots all taken) is skipped
+        in favor of the next lane engine that can start immediately — load
+        spills down the lane instead of queueing behind the top engine. Only
+        if *every* eligible engine is busy do we wait, in lane order. Quota
+        errors bench the whole provider until its reset; repeated failures of
+        any other kind bench the engine for a cooldown period.
         """
         candidates = self._candidates(task, override)
-        now = datetime.now(UTC)
         blocked: list[_EngineRuntime] = []
+        deferred: list[_EngineRuntime] = []
         last_error: EngineError | None = None
 
-        for runtime in candidates:
-            if runtime.status(now) is not EngineStatus.OK:
-                blocked.append(runtime)
-                continue
+        async def attempt(runtime: _EngineRuntime) -> tuple[T, str] | None:
+            nonlocal last_error
             try:
                 result = await self._run_on_engine(runtime, fn)
-                runtime.consecutive_failures = 0
-                runtime.cooldown_until = None
-                return result, runtime.engine.id
             except EngineError as exc:
                 last_error = exc
                 runtime.last_error = str(exc)
-                if exc.kind is ErrorKind.QUOTA:
-                    seconds = exc.retry_after_seconds or _DEFAULT_QUOTA_RESET_SECONDS
-                    runtime.provider.quota_resets_at = datetime.now(UTC) + timedelta(
-                        seconds=seconds
-                    )
+                if self._note_failure(runtime, exc):
                     blocked.append(runtime)
-                    logger.warning(
-                        "provider %s quota exhausted (via engine %s): %s",
-                        runtime.provider.config.id,
-                        runtime.engine.id,
-                        exc,
-                    )
-                else:
-                    runtime.consecutive_failures += 1
-                    if runtime.consecutive_failures >= self._failure_threshold:
-                        runtime.cooldown_until = datetime.now(UTC) + timedelta(
-                            seconds=self._cooldown_seconds
-                        )
-                        logger.warning(
-                            "engine %s benched for %.0fs after %d consecutive"
-                            " failures: %s",
-                            runtime.engine.id,
-                            self._cooldown_seconds,
-                            runtime.consecutive_failures,
-                            exc,
-                        )
-                    else:
-                        logger.warning("engine %s failed: %s", runtime.engine.id, exc)
+                return None
+            runtime.consecutive_failures = 0
+            runtime.cooldown_until = None
+            return result, runtime.engine.id
+
+        # Pass 1: eligible engines that can start right now, in lane order.
+        for runtime in candidates:
+            if runtime.status(datetime.now(UTC)) is not EngineStatus.OK:
+                blocked.append(runtime)
+            elif not runtime.provider.has_free_slot():
+                deferred.append(runtime)  # busy — try a free engine first
+            elif (outcome := await attempt(runtime)) is not None:
+                return outcome
+
+        # Pass 2: every eligible engine was busy — wait on them in lane order.
+        for runtime in deferred:
+            if runtime.status(datetime.now(UTC)) is not EngineStatus.OK:
+                blocked.append(runtime)
+            elif (outcome := await attempt(runtime)) is not None:
+                return outcome
 
         if blocked:
             now = datetime.now(UTC)
@@ -253,14 +267,46 @@ class Router:
             f"all eligible engines failed; last error: {last_error}",
         )
 
+    def _note_failure(self, runtime: _EngineRuntime, exc: EngineError) -> bool:
+        """Record an engine error and apply benching. Returns True when it
+        quota-benched the provider (so the caller marks it blocked)."""
+        if exc.kind is ErrorKind.QUOTA:
+            seconds = exc.retry_after_seconds or _DEFAULT_QUOTA_RESET_SECONDS
+            runtime.provider.quota_resets_at = datetime.now(UTC) + timedelta(
+                seconds=seconds
+            )
+            logger.warning(
+                "provider %s quota exhausted (via engine %s): %s",
+                runtime.provider.config.id,
+                runtime.engine.id,
+                exc,
+            )
+            return True
+        runtime.consecutive_failures += 1
+        if runtime.consecutive_failures >= self._failure_threshold:
+            runtime.cooldown_until = datetime.now(UTC) + timedelta(
+                seconds=self._cooldown_seconds
+            )
+            logger.warning(
+                "engine %s benched for %.0fs after %d consecutive failures: %s",
+                runtime.engine.id,
+                self._cooldown_seconds,
+                runtime.consecutive_failures,
+                exc,
+            )
+        else:
+            logger.warning("engine %s failed: %s", runtime.engine.id, exc)
+        return False
+
     async def _run_on_engine(
         self, runtime: _EngineRuntime, fn: Callable[[Engine], Awaitable[T]]
     ) -> T:
         attempts = 1 + self._transient_retries
         for attempt in range(attempts):
             async with runtime.provider.semaphore:
-                await runtime.provider.throttle()
+                runtime.provider.active_requests += 1
                 try:
+                    await runtime.provider.throttle()
                     return await fn(runtime.engine)
                 except EngineError as exc:
                     if exc.kind is not ErrorKind.TRANSIENT or attempt == attempts - 1:
@@ -273,6 +319,8 @@ class Router:
                         attempts,
                         exc,
                     )
+                finally:
+                    runtime.provider.active_requests -= 1
             await asyncio.sleep(delay)
         raise AssertionError("unreachable")
 
