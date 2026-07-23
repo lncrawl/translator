@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
-import os
-import secrets
 from pathlib import Path
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
 
 from . import __version__
 from .config import AppConfig
 from .detect import detect_language
 from .engines import EngineStatus, capabilities_for
-from .errors import ApiError
 from .router import Router
 from .schemas import (
     DetectionResult,
@@ -29,23 +25,7 @@ from .schemas import (
     TranslateTextResponse,
 )
 
-AUTH_TOKEN_ENV = "AUTH_TOKEN"
-
 INDEX_HTML = Path(__file__).resolve().parent / "static" / "index.html"
-
-
-def require_auth(
-    authorization: Annotated[str | None, Header()] = None,
-) -> None:
-    """Bearer-token auth, active only when $AUTH_TOKEN is set."""
-    token = os.environ.get(AUTH_TOKEN_ENV)
-    if not token:
-        return
-    # Compare as bytes: compare_digest raises TypeError on non-ASCII str.
-    expected = f"Bearer {token}".encode()
-    provided = (authorization or "").encode("utf-8", errors="replace")
-    if not secrets.compare_digest(provided, expected):
-        raise ApiError(401, "unauthorized", "missing or invalid bearer token")
 
 
 def _config(request: Request) -> AppConfig:
@@ -59,7 +39,7 @@ def _router(request: Request) -> Router:
 
 
 health_router = APIRouter()
-router = APIRouter(dependencies=[Depends(require_auth)])
+router = APIRouter()
 
 
 @health_router.get("/", include_in_schema=False)
@@ -81,7 +61,7 @@ def health(request: Request) -> dict[str, object]:
 
 @router.get("/config", tags=["config"])
 def get_config(request: Request) -> AppConfig:
-    """The live config, including provider API keys (bearer-protected)."""
+    """The live config, including provider API keys."""
     return _config(request)
 
 

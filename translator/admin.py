@@ -2,18 +2,15 @@
 
 Every mutation builds a candidate config from the live one, revalidates it as
 a whole, then applies it atomically via the ConfigStore (which also persists
-it back to the YAML file). Provider API keys are set through this API as
-direct tokens; they are stored in the config file and returned by config
-reads, so always deploy with AUTH_TOKEN/ADMIN_TOKEN set.
+it back to the YAML file). The API is unauthenticated by design — the
+service is meant for localhost or a private network; don't expose it.
 """
 
 from __future__ import annotations
 
-import os
-import secrets
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from .config import (
@@ -27,32 +24,7 @@ from .config import (
 from .errors import ApiError
 from .state import ConfigStore
 
-ADMIN_TOKEN_ENV = "ADMIN_TOKEN"
-AUTH_TOKEN_ENV = "AUTH_TOKEN"
-
-
-def require_admin(
-    authorization: Annotated[str | None, Header()] = None,
-) -> None:
-    """Config writes need $ADMIN_TOKEN (or $AUTH_TOKEN as fallback).
-
-    Unlike read endpoints, writes are disabled outright when neither token
-    is set — an unauthenticated deployment must not expose a writable config.
-    """
-    token = os.environ.get(ADMIN_TOKEN_ENV) or os.environ.get(AUTH_TOKEN_ENV)
-    if not token:
-        raise ApiError(
-            403,
-            "config_writes_disabled",
-            "set ADMIN_TOKEN (or AUTH_TOKEN) to enable config mutation",
-        )
-    expected = f"Bearer {token}".encode()
-    provided = (authorization or "").encode("utf-8", errors="replace")
-    if not secrets.compare_digest(provided, expected):
-        raise ApiError(401, "unauthorized", "missing or invalid bearer token")
-
-
-admin_router = APIRouter(dependencies=[Depends(require_admin)])
+admin_router = APIRouter()
 
 
 def _store(request: Request) -> ConfigStore:

@@ -18,7 +18,6 @@ built-in local NLLB model (no key required) is the last-resort fallback,
 so translation works even with zero keys:
 
 ```bash
-export AUTH_TOKEN=...              # recommended; also enables config writes
 docker compose up -d
 curl http://localhost:8000/health  # shows which engines came up
 ```
@@ -42,8 +41,9 @@ for the engine research.
 - `POST /translate/html` — one chapter per call, glossary in/new terms out
 - `GET /config` + CRUD on `/providers`, `/engines`, `/routing` — runtime
   config management; changes apply atomically and persist to `config.yml`
-  (writes need `ADMIN_TOKEN`, see
-  [docs/deployment.md](docs/deployment.md))
+
+The API is unauthenticated by design — run it on localhost or a private
+network only (see [docs/deployment.md](docs/deployment.md)).
 
 ## Development
 

@@ -457,7 +457,6 @@
       </nav>
       <div class="header-actions">
         <a href="/docs" target="_blank" rel="noopener">API docs</a>
-        <button class="ghost" id="btn-tokens">Tokens</button>
       </div>
     </header>
 
@@ -672,7 +671,6 @@
           <p class="hint">
             Live status of every configured engine: routing eligibility,
             rate-limit cooldowns, and quota state (<code>GET /engines</code>).
-            The enable switch is a config write and needs the admin token.
           </p>
           <div class="actions" style="margin: 0 0 10px">
             <button class="ghost" id="engines-refresh">Refresh</button>
@@ -688,9 +686,7 @@
           <h2>Configuration</h2>
           <p class="hint">
             The live runtime config (<code>GET /config</code>). Writes apply
-            atomically, persist to <code>config.yml</code>, and need the admin
-            token. Secrets never appear here — providers reference API keys by
-            env var name only.
+            atomically and persist to <code>config.yml</code>.
           </p>
           <div class="actions" style="margin: 0">
             <button class="ghost" id="config-refresh">Reload</button>
@@ -798,28 +794,6 @@
       <option value="ar"></option>
       <option value="bn"></option>
     </datalist>
-
-    <!-- Token settings -->
-    <dialog id="token-dialog">
-      <h2>Access tokens</h2>
-      <p class="hint">
-        Stored only in this browser (localStorage). The API token is needed when
-        the server sets <code>AUTH_TOKEN</code>; config writes need
-        <code>ADMIN_TOKEN</code> (the API token is used as fallback).
-      </p>
-      <label class="field"
-        ><span>API token (AUTH_TOKEN)</span>
-        <input type="password" id="token-api" autocomplete="off"
-      /></label>
-      <label class="field"
-        ><span>Admin token (ADMIN_TOKEN)</span>
-        <input type="password" id="token-admin" autocomplete="off"
-      /></label>
-      <div class="actions">
-        <button class="primary" id="token-save">Save</button>
-        <button class="ghost" id="token-cancel">Cancel</button>
-      </div>
-    </dialog>
 
     <!-- Provider editor -->
     <dialog id="provider-dialog">
@@ -972,28 +946,9 @@
         setTimeout(() => node.remove(), kind === "error" ? 7000 : 3500);
       }
 
-      const store = {
-        get apiToken() {
-          return localStorage.getItem("translator.apiToken") || "";
-        },
-        set apiToken(v) {
-          localStorage.setItem("translator.apiToken", v);
-        },
-        get adminToken() {
-          return localStorage.getItem("translator.adminToken") || "";
-        },
-        set adminToken(v) {
-          localStorage.setItem("translator.adminToken", v);
-        },
-      };
-
-      async function api(path, { method = "GET", body, admin = false } = {}) {
-        const token = admin
-          ? store.adminToken || store.apiToken
-          : store.apiToken;
+      async function api(path, { method = "GET", body } = {}) {
         const headers = {};
         if (body !== undefined) headers["Content-Type"] = "application/json";
-        if (token) headers["Authorization"] = "Bearer " + token;
         let res;
         try {
           res = await fetch(path, {
@@ -1023,10 +978,6 @@
       function reportError(err) {
         let message = `${err.code || "error"}: ${err.message}`;
         if (err.retryAfter) message += ` (retry in ${err.retryAfter}s)`;
-        if (err.status === 401)
-          message += " — set your token via the Tokens button";
-        if (err.status === 403 && err.code === "config_writes_disabled")
-          message += " — the server has no ADMIN_TOKEN/AUTH_TOKEN set";
         toast(message, "error");
       }
 
@@ -1072,29 +1023,6 @@
           if (button.dataset.tab === "config") loadConfig();
         });
       }
-
-      /* ---------------------------------------------------------------- tokens */
-
-      $("#btn-tokens").addEventListener("click", () => {
-        $("#token-api").value = store.apiToken;
-        $("#token-admin").value = store.adminToken;
-        $("#token-dialog").showModal();
-      });
-      $("#token-save").addEventListener("click", () => {
-        store.apiToken = $("#token-api").value.trim();
-        store.adminToken = $("#token-admin").value.trim();
-        $("#token-dialog").close();
-        updateTokenButton();
-        toast("Tokens saved to this browser");
-      });
-      $("#token-cancel").addEventListener("click", () =>
-        $("#token-dialog").close(),
-      );
-      function updateTokenButton() {
-        const set = store.apiToken || store.adminToken;
-        $("#btn-tokens").textContent = set ? "Tokens ●" : "Tokens";
-      }
-      updateTokenButton();
 
       /* ---------------------------------------------------------------- health */
 
@@ -1227,7 +1155,7 @@
             el(
               "div",
               { class: "inline-note" },
-              "Could not load engines — check the service and your API token.",
+              "Could not load engines — is the service running?",
             ),
           );
           return;
@@ -1255,7 +1183,6 @@
                   await api(`/engines/${encodeURIComponent(engine.id)}`, {
                     method: "PATCH",
                     body: { enabled: !engine.enabled },
-                    admin: true,
                   });
                   toast(
                     `${engine.id} ${engine.enabled ? "disabled" : "enabled"}`,
@@ -1772,7 +1699,6 @@
             await api(`/providers/${encodeURIComponent(providerEditing)}`, {
               method: "PATCH",
               body: payload,
-              admin: true,
             });
             toast(`Provider ${providerEditing} updated`);
           } else {
@@ -1784,7 +1710,6 @@
             await api("/providers", {
               method: "POST",
               body: { id, ...payload },
-              admin: true,
             });
             toast(`Provider ${id} created`);
           }
@@ -1933,7 +1858,6 @@
             await api(`/engines/${encodeURIComponent(engineEditing)}`, {
               method: "PATCH",
               body: payload,
-              admin: true,
             });
             toast(`Engine ${engineEditing} updated`);
           } else {
@@ -1945,7 +1869,6 @@
             await api("/engines", {
               method: "POST",
               body: { id, ...payload },
-              admin: true,
             });
             toast(`Engine ${id} created`);
           }
@@ -1958,7 +1881,7 @@
       async function confirmDelete(button, question, path) {
         if (!window.confirm(question)) return;
         await busy(button, async () => {
-          await api(path, { method: "DELETE", admin: true });
+          await api(path, { method: "DELETE" });
           toast("Deleted");
           await loadConfig();
           await refreshEnginesCache();
@@ -2070,7 +1993,6 @@
           await api("/routing", {
             method: "PUT",
             body: routingDraft,
-            admin: true,
           });
           toast("Routing saved");
           await loadConfig();
@@ -2095,7 +2017,6 @@
         busy(event.target, async () => {
           await api("/config/failure-policy", {
             method: "PUT",
-            admin: true,
             body: {
               transient_retries: Number($("#fp-retries").value),
               backoff_base_seconds: Number($("#fp-backoff").value),
@@ -2125,7 +2046,7 @@
             )
           )
             return;
-          await api("/config", { method: "PUT", body: parsed, admin: true });
+          await api("/config", { method: "PUT", body: parsed });
           toast("Config replaced");
           await loadConfig();
           await refreshEnginesCache();

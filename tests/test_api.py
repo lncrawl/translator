@@ -2,10 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from helpers import FakeEngine, make_config
 
-from translator.api import require_auth
 from translator.config import AppConfig
 from translator.engines.base import EngineError, ErrorKind
-from translator.errors import ApiError
 from translator.main import create_app
 from translator.router import Router
 
@@ -38,8 +36,7 @@ def fake_client(*engines: FakeEngine, config: AppConfig | None = None) -> TestCl
 
 
 @pytest.fixture
-def boot_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.delenv("AUTH_TOKEN", raising=False)
+def boot_client() -> TestClient:
     return TestClient(create_app(BOOT_CONFIG))
 
 
@@ -71,7 +68,6 @@ def test_engines_listing_reflects_boot_time_keys(
 
 
 def test_engines_listing_with_key_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AUTH_TOKEN", raising=False)
     keyed = AppConfig.model_validate(BOOT_CONFIG_DATA)
     provider = keyed.provider("llm")
     assert provider is not None
@@ -90,7 +86,6 @@ def test_detect_endpoint(boot_client: TestClient) -> None:
 
 
 def test_translate_text_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AUTH_TOKEN", raising=False)
     client = fake_client(FakeEngine("fake"))
     resp = client.post("/translate/text", json={"texts": ["你好"]})
     assert resp.status_code == 200
@@ -101,7 +96,6 @@ def test_translate_text_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_translate_html_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AUTH_TOKEN", raising=False)
     client = fake_client(FakeEngine("fake", new_terms={"药老": "Yao Lao"}))
     resp = client.post(
         "/translate/html",
@@ -116,7 +110,6 @@ def test_translate_html_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_quota_exhaustion_surfaces_as_503(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("AUTH_TOKEN", raising=False)
     engine = FakeEngine(
         "fake", errors=[EngineError("q", ErrorKind.QUOTA, retry_after_seconds=60)]
     )
@@ -132,7 +125,6 @@ def test_quota_exhaustion_surfaces_as_503(
 
 
 def test_invalid_lang_tags_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AUTH_TOKEN", raising=False)
     client = fake_client(FakeEngine("fake"))
     for bad in ("english", "e", "zh_CN", "zh-CN-Hant", "zh-Hantt"):
         resp = client.post(
@@ -144,7 +136,6 @@ def test_invalid_lang_tags_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_lang_tags_accept_variants_case_insensitively(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("AUTH_TOKEN", raising=False)
     client = fake_client(FakeEngine("fake"))
     for tag in ("EN", "zh-tw", "zh-Hant", "pt-br"):
         resp = client.post(
@@ -155,7 +146,6 @@ def test_lang_tags_accept_variants_case_insensitively(
 
 
 def test_oversized_html_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AUTH_TOKEN", raising=False)
     client = fake_client(FakeEngine("fake"))
     resp = client.post(
         "/translate/html", json={"html": "<p>" + "x" * 1_000_000 + "</p>"}
@@ -166,7 +156,6 @@ def test_oversized_html_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_unexpected_error_returns_json_envelope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("AUTH_TOKEN", raising=False)
     engine = FakeEngine("fake", errors=[RuntimeError("boom"), RuntimeError("boom")])
     config = make_config("fake")
     router = Router([engine], config, transient_retries=0, backoff_base_seconds=0)
@@ -179,7 +168,6 @@ def test_unexpected_error_returns_json_envelope(
 
 
 def test_oversized_body_rejected_with_413(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AUTH_TOKEN", raising=False)
     client = fake_client(FakeEngine("fake"))
     resp = client.post(
         "/translate/html",
@@ -191,29 +179,3 @@ def test_oversized_body_rejected_with_413(monkeypatch: pytest.MonkeyPatch) -> No
     )
     assert resp.status_code == 413
     assert resp.json()["error"]["code"] == "payload_too_large"
-
-
-def test_non_ascii_auth_header_is_401_not_500(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # httpx refuses to send non-ASCII headers, but real clients can (headers
-    # are latin-1 on the wire) — so exercise the dependency directly.
-    monkeypatch.setenv("AUTH_TOKEN", "sekret")
-    with pytest.raises(ApiError) as excinfo:
-        require_auth("Bearer sékret")
-    assert excinfo.value.status_code == 401
-
-
-def test_auth_enforced_when_token_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AUTH_TOKEN", "sekret")
-    client = TestClient(create_app(BOOT_CONFIG))
-
-    assert client.post("/detect", json={"texts": ["hi"]}).status_code == 401
-    ok = client.post(
-        "/detect",
-        json={"texts": ["hi"]},
-        headers={"Authorization": "Bearer sekret"},
-    )
-    assert ok.status_code == 200
-    # /health stays open for container liveness probes.
-    assert client.get("/health").status_code == 200

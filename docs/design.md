@@ -17,8 +17,8 @@ A stateless HTTP translation service for web novels, consumed by lncrawl
 All endpoints are synchronous JSON over HTTP. Chapter translation can take
 seconds (hosted LLM) to ~10 minutes (local CPU model) — callers must use long
 client timeouts (lncrawl calls server-to-server, typically on the same host).
-Optional bearer-token auth via `AUTH_TOKEN` env var (unset = open, for
-localhost/private-network deployments).
+No authentication — the service targets localhost/private-network
+deployments only.
 
 ### `GET /health`
 
@@ -134,7 +134,7 @@ Structured error body everywhere:
 {"error": {"code": "all_engines_exhausted", "message": "…", "retry_after_seconds": 3600}}
 ```
 
-- `422` invalid request; `401` bad token; `502` engine failure after retries;
+- `422` invalid request; `502` engine failure after retries;
   `503` + `Retry-After` when all eligible lanes are quota-exhausted or
   throttled. Quota exhaustion is a first-class signal, not a generic error —
   lncrawl schedules around it.

@@ -9,9 +9,9 @@
 #   routing:    ordered fallback lanes per task type
 #
 # API keys live in this file (api_key); engines on a provider stay disabled
-# until its key is set. Protect the file and set AUTH_TOKEN — GET /config
-# returns keys to any bearer of it. See docs/deployment.md, and
-# docs/translation-engines.md for provider research.
+# until its key is set. The API is open (no auth) and GET /config returns
+# the keys — run on localhost or a private network only. See
+# docs/deployment.md, and docs/translation-engines.md for provider research.
 
 providers:
   # Local NLLB (Meta's NLLB-200 via CTranslate2, in-process on CPU).

@@ -11,10 +11,6 @@ services:
       # directory over /data to provide your own config.
       - translator-data:/data
     environment:
-      # Provider API keys are configured remotely and persist in the volume.
-      # Override the default admin token before exposing beyond localhost.
-      - AUTH_TOKEN=${AUTH_TOKEN:-}
-      - ADMIN_TOKEN=${ADMIN_TOKEN:-changeme}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
 
