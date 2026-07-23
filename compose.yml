@@ -12,15 +12,9 @@ services:
       # a directory over /data.
       - translator-data:/data
     environment:
-      # Pass through whichever engine keys you have set on the host
-      # (every api_key_env referenced in config.example.yml).
-      - ZAI_API_KEY
-      - GEMINI_API_KEY
-      - CEREBRAS_API_KEY
-      - MISTRAL_API_KEY
-      - GROQ_API_KEY
-      - OPENROUTER_API_KEY
-      - DEEPL_API_KEY
+      # Provider API keys are configured remotely (web UI at / or the
+      # config API) and persist in the volume; only service-level
+      # settings come from the environment.
       - AUTH_TOKEN
       - ADMIN_TOKEN
       - LOG_LEVEL

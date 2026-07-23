@@ -2,8 +2,9 @@
 
 Every mutation builds a candidate config from the live one, revalidates it as
 a whole, then applies it atomically via the ConfigStore (which also persists
-it back to the YAML file). Secrets are never accepted or returned — providers
-reference API keys by env var name only.
+it back to the YAML file). Provider API keys are set through this API as
+direct tokens; they are stored in the config file and returned by config
+reads, so always deploy with AUTH_TOKEN/ADMIN_TOKEN set.
 """
 
 from __future__ import annotations
@@ -72,7 +73,8 @@ def _validated(data: dict[str, Any]) -> AppConfig:
 class ProviderPatch(BaseModel):
     kind: EngineKind | None = None
     base_url: str | None = None
-    api_key_env: str | None = None
+    api_key: str | None = None
+    requires_key: bool | None = None
     rps: float | None = Field(default=None, gt=0)
     rpm: float | None = Field(default=None, gt=0)
     max_concurrency: int | None = Field(default=None, ge=1)
@@ -91,13 +93,13 @@ class EnginePatch(BaseModel):
 # -- whole config -----------------------------------------------------------
 
 
-@admin_router.put("/config")
+@admin_router.put("/config", tags=["config"])
 async def replace_config(payload: AppConfig, request: Request) -> AppConfig:
     await _store(request).apply(payload)
     return payload
 
 
-@admin_router.put("/config/failure-policy")
+@admin_router.put("/config/failure-policy", tags=["config"])
 async def update_failure_policy(
     payload: FailurePolicy, request: Request
 ) -> FailurePolicy:
@@ -108,7 +110,7 @@ async def update_failure_policy(
     return payload
 
 
-@admin_router.put("/routing")
+@admin_router.put("/routing", tags=["config"])
 async def replace_routing(payload: RoutingConfig, request: Request) -> RoutingConfig:
     store = _store(request)
     data = store.config.model_dump()
@@ -120,7 +122,7 @@ async def replace_routing(payload: RoutingConfig, request: Request) -> RoutingCo
 # -- providers ----------------------------------------------------------------
 
 
-@admin_router.post("/providers", status_code=201)
+@admin_router.post("/providers", status_code=201, tags=["providers"])
 async def create_provider(payload: ProviderConfig, request: Request) -> ProviderConfig:
     store = _store(request)
     if store.config.provider(payload.id) is not None:
@@ -131,7 +133,7 @@ async def create_provider(payload: ProviderConfig, request: Request) -> Provider
     return payload
 
 
-@admin_router.patch("/providers/{provider_id}")
+@admin_router.patch("/providers/{provider_id}", tags=["providers"])
 async def update_provider(
     provider_id: str, payload: ProviderPatch, request: Request
 ) -> ProviderConfig:
@@ -150,7 +152,7 @@ async def update_provider(
     return updated
 
 
-@admin_router.delete("/providers/{provider_id}", status_code=204)
+@admin_router.delete("/providers/{provider_id}", status_code=204, tags=["providers"])
 async def delete_provider(provider_id: str, request: Request) -> Response:
     store = _store(request)
     if store.config.provider(provider_id) is None:
@@ -171,7 +173,7 @@ async def delete_provider(provider_id: str, request: Request) -> Response:
 # -- engines ------------------------------------------------------------------
 
 
-@admin_router.post("/engines", status_code=201)
+@admin_router.post("/engines", status_code=201, tags=["engines"])
 async def create_engine(payload: EngineConfig, request: Request) -> EngineConfig:
     store = _store(request)
     if store.config.engine(payload.id) is not None:
@@ -182,7 +184,7 @@ async def create_engine(payload: EngineConfig, request: Request) -> EngineConfig
     return payload
 
 
-@admin_router.patch("/engines/{engine_id}")
+@admin_router.patch("/engines/{engine_id}", tags=["engines"])
 async def update_engine(
     engine_id: str, payload: EnginePatch, request: Request
 ) -> EngineConfig:
@@ -201,7 +203,7 @@ async def update_engine(
     return updated
 
 
-@admin_router.delete("/engines/{engine_id}", status_code=204)
+@admin_router.delete("/engines/{engine_id}", status_code=204, tags=["engines"])
 async def delete_engine(engine_id: str, request: Request) -> Response:
     """Remove an engine; it is also stripped from all routing lanes."""
     store = _store(request)

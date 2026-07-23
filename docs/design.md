@@ -225,21 +225,22 @@ context; reassemble in order. One chapter normally fits a single LLM call.
 
 ## Configuration
 
-A single YAML file (mounted into the container) + env vars for secrets:
+A single YAML file (persisted in the container's data volume), managed
+remotely via the config API / web UI — provider API keys are part of it:
 
 ```yaml
 engines:
   - id: zai-glm-flash
     kind: openai
     base_url: https://api.z.ai/api/paas/v4
-    api_key_env: ZAI_API_KEY
+    api_key: <token>
     model: glm-4.7-flash
     rps: 1
     max_concurrency: 1
     max_input_tokens: 200000
   - id: deepl
     kind: deepl
-    api_key_env: DEEPL_API_KEY
+    api_key: <token>
     monthly_chars: 500000
   - id: nllb
     kind: nllb
@@ -250,9 +251,9 @@ routing:
   short_text: [zai-glm-flash, deepl, nllb]
 ```
 
-Engines without their key env set are auto-disabled (visible in `/engines`).
-Free tiers churn, so adding/removing a lane is a config edit, never a code
-change.
+Engines whose provider requires a key that is not set yet are auto-disabled
+(visible in `/engines`). Free tiers churn, so adding/removing a lane is a
+config edit, never a code change.
 
 ## Deployment shape
 

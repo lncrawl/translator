@@ -63,7 +63,18 @@ def create_app(
         yield
         await store.close()
 
-    app = FastAPI(title="translator", version=__version__, lifespan=lifespan)
+    app = FastAPI(
+        title="translator",
+        version=__version__,
+        lifespan=lifespan,
+        openapi_tags=[
+            {"name": "translation", "description": "Translate and detect language"},
+            {"name": "engines", "description": "Engine status and management"},
+            {"name": "providers", "description": "Provider accounts and API keys"},
+            {"name": "config", "description": "Whole-config, routing, and policy"},
+            {"name": "service", "description": "Liveness and readiness"},
+        ],
+    )
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     @app.middleware("http")

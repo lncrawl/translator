@@ -1,14 +1,16 @@
 # OPTIONAL — without a config file the service uses built-in defaults
-# (translator/defaults.py) covering everything below; engines enable
-# themselves when their key env var is set. Copy to config.yml (or point
-# $TRANSLATOR_CONFIG at it) only to customize.
+# (translator/defaults.py) covering everything below; paste provider API
+# keys remotely via the web UI at / or the config API and the matching
+# engines enable themselves. Copy to config.yml (or point $TRANSLATOR_CONFIG
+# at it) only to customize at boot.
 #
 #   providers:  an account at an API host — credentials + shared rate limits
 #   engines:    one model on one provider — what routing lanes reference
 #   routing:    ordered fallback lanes per task type
 #
-# Keys stay in env vars, never in this file. Everything is also editable at
-# runtime via the web UI at / or the config API (docs/deployment.md); see
+# API keys live in this file (api_key); engines on a provider stay disabled
+# until its key is set. Protect the file and set AUTH_TOKEN — GET /config
+# returns keys to any bearer of it. See docs/deployment.md, and
 # docs/translation-engines.md for provider research.
 
 providers:
@@ -21,7 +23,7 @@ providers:
   - id: zai
     kind: openai
     base_url: https://api.z.ai/api/paas/v4
-    api_key_env: ZAI_API_KEY
+    api_key: ""  # your z.ai key
     rps: 1
     max_concurrency: 1
 
@@ -29,32 +31,38 @@ providers:
   - id: gemini
     kind: openai
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
-    api_key_env: GEMINI_API_KEY
+    api_key: ""  # your AI Studio key
     rpm: 10
     max_concurrency: 2
 
   # openrouter.ai — 50 req/day free (1,000/day after one-time $10 credit);
   # free model lineup churns monthly.
-  # - id: openrouter
-  #   kind: openai
-  #   base_url: https://openrouter.ai/api/v1
-  #   api_key_env: OPENROUTER_API_KEY
-  #   rpm: 20
-  #   max_concurrency: 1
+  - id: openrouter
+    kind: openai
+    base_url: https://openrouter.ai/api/v1
+    api_key: ""  # your-openrouter-key
+    rpm: 20
+    max_concurrency: 1
 
   # cloud.cerebras.ai — 1M tokens/day free, very fast.
-  # - id: cerebras
-  #   kind: openai
-  #   base_url: https://api.cerebras.ai/v1
-  #   api_key_env: CEREBRAS_API_KEY
-  #   rpm: 5
-  #   max_concurrency: 1
+  - id: cerebras
+    kind: openai
+    base_url: https://api.cerebras.ai/v1
+    api_key: ""  # your-cerebras-key
+    rpm: 5
+    max_concurrency: 1
 
   # deepl.com/pro-api — NMT for short strings; card required at signup.
-  # - id: deepl
-  #   kind: deepl
-  #   api_key_env: DEEPL_API_KEY
-  #   monthly_chars: 500000
+  - id: deepl
+    kind: deepl
+    api_key: ""  # your-deepl-key
+    monthly_chars: 500000
+
+  # A local OpenAI-compatible server (llama.cpp, Ollama) needs no key:
+  # - id: local-llm
+  #   kind: openai
+  #   base_url: http://localhost:8080/v1
+  #   requires_key: false
 
 engines:
   # Local fallback. `model` is a HF repo with a CTranslate2 conversion (or a
@@ -77,28 +85,29 @@ engines:
     max_input_tokens: 250000
 
   # Engines on one provider share its rate limits and quota.
-  # - id: or-nemotron
-  #   provider: openrouter
-  #   model: nvidia/nemotron-3-super-120b-a12b:free
-  #   max_input_tokens: 100000
-  # - id: or-qwen
-  #   provider: openrouter
-  #   model: qwen/qwen3.5-235b-a22b:free
-  #   max_input_tokens: 100000
+  - id: or-nemotron
+    provider: openrouter
+    model: nvidia/nemotron-3-super-120b-a12b:free
+    max_input_tokens: 100000
 
-  # - id: cerebras-glm
-  #   provider: cerebras
-  #   model: zai-glm-4.7
-  #   max_input_tokens: 30000
+  - id: or-qwen
+    provider: openrouter
+    model: qwen/qwen3.5-235b-a22b:free
+    max_input_tokens: 100000
 
-  # - id: deepl
-  #   provider: deepl
+  - id: cerebras-glm
+    provider: cerebras
+    model: zai-glm-4.7
+    max_input_tokens: 30000
+
+  - id: deepl
+    provider: deepl
 
 # Lanes are tried in order; benched engines (quota, repeated failures) are
 # skipped. Keep keyless NLLB last so the service always answers.
 routing:
-  chapter: [zai-glm-flash, gemini-flash, nllb]
-  short_text: [zai-glm-flash, gemini-flash, nllb]
+  chapter: [nllb]
+  short_text: [nllb]
 
 # Defaults shown. After `failure_threshold` consecutive failures an engine
 # is benched for `cooldown_seconds`.

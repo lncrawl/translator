@@ -4,8 +4,11 @@ A *provider* is an account at an API host — it owns the credentials and the
 rate/quota limits, which are shared by every model used through it. An
 *engine* is one model on one provider and is what routing lanes reference.
 
-Secrets never live in the file: providers name an env var (``api_key_env``)
-and the key is read from the environment.
+Credentials: a provider carries its API key directly (``api_key``), set at
+boot via this file or remotely via the config API / web UI, and persisted
+in the config file. Providers that need no credentials (local servers)
+set ``requires_key: false``; until a required key is set the provider's
+engines stay disabled.
 
 Legacy flat configs (engines carrying ``base_url``/``kind`` directly) are
 migrated on load: each such engine gets an implicit provider with the same id.
@@ -32,7 +35,8 @@ EngineKind = Literal["openai", "deepl", "nllb"]
 _LEGACY_PROVIDER_FIELDS = (
     "kind",
     "base_url",
-    "api_key_env",
+    "api_key",
+    "requires_key",
     "rps",
     "rpm",
     "max_concurrency",
@@ -46,7 +50,12 @@ class ProviderConfig(BaseModel):
     id: str = Field(min_length=1)
     kind: EngineKind = "openai"
     base_url: str | None = None
-    api_key_env: str | None = None
+    # Direct token, persisted in the config file; set at boot or remotely
+    # via the config API / web UI. Engines stay disabled until the key is
+    # set — unless the provider needs none (requires_key: false, e.g. a
+    # local server; nllb never needs one).
+    api_key: str | None = None
+    requires_key: bool = True
     # Client-side rate limits, shared by all engines on this provider.
     rps: float | None = Field(default=None, gt=0)
     rpm: float | None = Field(default=None, gt=0)
@@ -55,17 +64,11 @@ class ProviderConfig(BaseModel):
     monthly_chars: int | None = Field(default=None, gt=0)
 
     @property
-    def api_key(self) -> str | None:
-        if not self.api_key_env:
-            return None
-        return os.environ.get(self.api_key_env) or None
-
-    @property
     def key_present(self) -> bool:
-        """True when no key is required or the declared env var is set."""
-        if self.api_key_env:
-            return self.api_key is not None
-        return True
+        """True when no key is required or one is set."""
+        if self.kind == "nllb" or not self.requires_key:
+            return True
+        return bool(self.api_key)
 
 
 class EngineConfig(BaseModel):
@@ -94,7 +97,8 @@ class ResolvedEngine(BaseModel):
     provider_id: str
     kind: EngineKind
     base_url: str | None
-    api_key_env: str | None
+    api_key: str | None = None
+    requires_key: bool = True
     model: str | None
     enabled: bool
     max_input_tokens: int | None
@@ -102,19 +106,13 @@ class ResolvedEngine(BaseModel):
     extra_body: dict[str, Any] = {}
 
     @property
-    def api_key(self) -> str | None:
-        if not self.api_key_env:
-            return None
-        return os.environ.get(self.api_key_env) or None
-
-    @property
     def available(self) -> bool:
-        """Enabled in config and the provider's key (if any) is set."""
+        """Enabled in config and the provider's key (if required) is set."""
         if not self.enabled:
             return False
-        if self.api_key_env:
-            return self.api_key is not None
-        return True
+        if self.kind == "nllb" or not self.requires_key:
+            return True
+        return bool(self.api_key)
 
 
 class RoutingConfig(BaseModel):
@@ -214,7 +212,8 @@ class AppConfig(BaseModel):
             provider_id=provider.id,
             kind=provider.kind,
             base_url=provider.base_url,
-            api_key_env=provider.api_key_env,
+            api_key=provider.api_key,
+            requires_key=provider.requires_key,
             model=engine.model,
             enabled=engine.enabled,
             max_input_tokens=engine.max_input_tokens,

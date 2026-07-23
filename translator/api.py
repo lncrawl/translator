@@ -68,7 +68,7 @@ def root() -> FileResponse:
     return FileResponse(INDEX_HTML, media_type="text/html")
 
 
-@health_router.get("/health")
+@health_router.get("/health", tags=["service"])
 def health(request: Request) -> dict[str, object]:
     config = _config(request)
     usable = [r.id for r in config.resolved_engines() if r.available]
@@ -79,13 +79,13 @@ def health(request: Request) -> dict[str, object]:
     }
 
 
-@router.get("/config")
+@router.get("/config", tags=["config"])
 def get_config(request: Request) -> AppConfig:
-    """The live config; keys are env var names, never secret values."""
+    """The live config, including provider API keys (bearer-protected)."""
     return _config(request)
 
 
-@router.get("/engines")
+@router.get("/engines", tags=["engines"])
 def list_engines(request: Request) -> EnginesResponse:
     config = _config(request)
     engine_router = _router(request)
@@ -112,7 +112,7 @@ def list_engines(request: Request) -> EnginesResponse:
     return EnginesResponse(engines=infos)
 
 
-@router.post("/detect")
+@router.post("/detect", tags=["translation"])
 def detect(payload: DetectRequest) -> DetectResponse:
     results = [
         DetectionResult(language=d.language, confidence=d.confidence)
@@ -121,14 +121,14 @@ def detect(payload: DetectRequest) -> DetectResponse:
     return DetectResponse(results=results)
 
 
-@router.post("/translate/text")
+@router.post("/translate/text", tags=["translation"])
 async def translate_text(
     payload: TranslateTextRequest, request: Request
 ) -> TranslateTextResponse:
     return await _router(request).translate_text(payload)
 
 
-@router.post("/translate/html")
+@router.post("/translate/html", tags=["translation"])
 async def translate_html(
     payload: TranslateHtmlRequest, request: Request
 ) -> TranslateHtmlResponse:

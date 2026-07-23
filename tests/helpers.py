@@ -19,7 +19,8 @@ def make_resolved(
     *,
     kind: Any = "openai",
     base_url: str | None = "http://fake/v1",
-    api_key_env: str | None = None,
+    api_key: str | None = None,
+    requires_key: bool = True,
     model: str | None = None,
     extra_body: dict[str, Any] | None = None,
 ) -> ResolvedEngine:
@@ -28,7 +29,8 @@ def make_resolved(
         provider_id=engine_id,
         kind=kind,
         base_url=base_url,
-        api_key_env=api_key_env,
+        api_key=api_key,
+        requires_key=requires_key,
         model=model,
         enabled=True,
         max_input_tokens=None,
@@ -58,7 +60,7 @@ class FakeEngine(Engine):
                 provider_id=engine_id,
                 kind="openai",
                 base_url="http://fake",
-                api_key_env=None,
+                requires_key=False,
                 model=None,
                 enabled=True,
                 max_input_tokens=None,
@@ -116,7 +118,8 @@ def make_config(
     extra_engines: list[dict[str, object]] | None = None,
 ) -> AppConfig:
     engines: list[dict[str, object]] = [
-        {"id": i, "kind": "openai", "base_url": "http://fake"} for i in engine_ids
+        {"id": i, "kind": "openai", "base_url": "http://fake", "requires_key": False}
+        for i in engine_ids
     ]
     engines.extend(extra_engines or [])
     return AppConfig.model_validate(

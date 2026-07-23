@@ -25,7 +25,7 @@ def test_legacy_flat_config_is_migrated() -> None:
                     "id": "old-style",
                     "kind": "openai",
                     "base_url": "http://x/v1",
-                    "api_key_env": "SOME_KEY",
+                    "api_key": "sk-test",
                     "rpm": 10,
                     "model": "m1",
                     "max_input_tokens": 8000,
@@ -37,6 +37,7 @@ def test_legacy_flat_config_is_migrated() -> None:
     provider = config.provider("old-style")
     assert provider is not None
     assert provider.base_url == "http://x/v1"
+    assert provider.api_key == "sk-test"
     assert provider.rpm == 10
     resolved = config.resolved("old-style")
     assert resolved is not None
@@ -86,16 +87,15 @@ def test_missing_file_yields_builtin_defaults(tmp_path: Path) -> None:
     assert engine_ids == routed
 
 
-def test_default_config_engines_need_keys(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Without any key env vars only the keyless local NLLB fallback is
-    # available (no API engine can fire accidentally); with a key set,
-    # exactly its engines light up too.
+def test_default_config_engines_need_keys() -> None:
+    # Fresh defaults ship no keys: only the keyless local NLLB fallback is
+    # available (no API engine can fire accidentally). Setting a provider's
+    # key remotely lights up exactly its engines.
     config = load_config(Path("/nonexistent/config.yml"))
-    for resolved in config.resolved_engines():
-        if resolved.api_key_env is not None:
-            monkeypatch.delenv(resolved.api_key_env, raising=False)
     assert [r.id for r in config.resolved_engines() if r.available] == ["nllb"]
-    monkeypatch.setenv("ZAI_API_KEY", "k")
+    provider = config.provider("zai")
+    assert provider is not None
+    provider.api_key = "k"
     assert [r.id for r in config.resolved_engines() if r.available] == [
         "zai-glm-flash",
         "nllb",
@@ -122,22 +122,33 @@ def test_duplicate_engine_ids_rejected() -> None:
         )
 
 
-def test_engine_unavailable_without_key_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    config = AppConfig.model_validate(
+def test_engine_unavailable_without_key() -> None:
+    data = {"engines": [{"id": "a", "kind": "openai", "base_url": "http://x"}]}
+    config = AppConfig.model_validate(data)
+    resolved = config.resolved("a")
+    assert resolved is not None
+    assert resolved.available is False  # requires a key by default
+
+    provider = config.provider("a")
+    assert provider is not None
+    provider.api_key = "secret"
+    resolved = config.resolved("a")
+    assert resolved is not None
+    assert resolved.available is True
+
+    # Keyless providers (local servers) opt out explicitly.
+    keyless = AppConfig.model_validate(
         {
             "engines": [
                 {
                     "id": "a",
                     "kind": "openai",
                     "base_url": "http://x",
-                    "api_key_env": "SOME_TEST_KEY",
+                    "requires_key": False,
                 }
             ]
         }
     )
-    resolved = config.resolved("a")
+    resolved = keyless.resolved("a")
     assert resolved is not None
-    monkeypatch.delenv("SOME_TEST_KEY", raising=False)
-    assert resolved.available is False
-    monkeypatch.setenv("SOME_TEST_KEY", "secret")
     assert resolved.available is True

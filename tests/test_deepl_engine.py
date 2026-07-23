@@ -8,13 +8,8 @@ from translator.engines.base import EngineError, ErrorKind
 from translator.engines.deepl import DeepLEngine
 
 
-def make_engine(
-    handler: httpx.MockTransport, monkeypatch: pytest.MonkeyPatch
-) -> DeepLEngine:
-    monkeypatch.setenv("DEEPL_TEST_KEY", "secret:fx")
-    config = make_resolved(
-        "deepl", kind="deepl", base_url=None, api_key_env="DEEPL_TEST_KEY"
-    )
+def make_engine(handler: httpx.MockTransport) -> DeepLEngine:
+    config = make_resolved("deepl", kind="deepl", base_url=None, api_key="secret:fx")
     engine = DeepLEngine(config)
     engine._client = httpx.AsyncClient(
         base_url="https://api-free.deepl.com", transport=handler
@@ -22,21 +17,14 @@ def make_engine(
     return engine
 
 
-async def test_free_key_selects_free_base_url(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("DEEPL_TEST_KEY", "secret:fx")
-    config = make_resolved(
-        "deepl", kind="deepl", base_url=None, api_key_env="DEEPL_TEST_KEY"
-    )
+async def test_free_key_selects_free_base_url() -> None:
+    config = make_resolved("deepl", kind="deepl", base_url=None, api_key="secret:fx")
     engine = DeepLEngine(config)
     assert str(engine._client.base_url).startswith("https://api-free.deepl.com")
     await engine.close()
 
 
-async def test_translate_html_uses_tag_handling(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_translate_html_uses_tag_handling() -> None:
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -50,7 +38,7 @@ async def test_translate_html_uses_tag_handling(
             },
         )
 
-    engine = make_engine(httpx.MockTransport(handler), monkeypatch)
+    engine = make_engine(httpx.MockTransport(handler))
     result = await engine.translate_html(
         "<p>你好</p>", source_lang="zh", target_lang="en", glossary={}
     )
@@ -62,12 +50,9 @@ async def test_translate_html_uses_tag_handling(
     assert body["source_lang"] == "ZH"
 
 
-async def test_456_is_quota_until_next_month(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_456_is_quota_until_next_month() -> None:
     engine = make_engine(
-        httpx.MockTransport(lambda _: httpx.Response(456, text="quota exceeded")),
-        monkeypatch,
+        httpx.MockTransport(lambda _: httpx.Response(456, text="quota exceeded"))
     )
     with pytest.raises(EngineError) as excinfo:
         await engine.translate_segments(

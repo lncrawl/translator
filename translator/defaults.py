@@ -1,11 +1,10 @@
 """Built-in default configuration, used when no config file exists.
 
-Covers the known free-tier providers; an API engine only becomes available
-when its provider's key env var is set, so exporting whichever keys you have
-is the entire setup. A local NLLB model (no key needed) is the last-resort
-fallback, so the service works out of the box. Customize at runtime via the
-config API (the first write creates the config file) or by providing a
-config.yml.
+Covers the known free-tier providers, pre-wired without credentials: an
+API engine becomes available once its provider's ``api_key`` is set via
+the web UI at / or the config API (the first write creates the config
+file). A local NLLB model (no key needed) is the last-resort fallback,
+so the service works out of the box.
 
 Free tiers churn — see docs/translation-engines.md for signup details and
 config.example.yml for a commented version of this structure.
@@ -20,7 +19,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "id": "zai",
             "kind": "openai",
             "base_url": "https://api.z.ai/api/paas/v4",
-            "api_key_env": "ZAI_API_KEY",
             "rps": 1,
             "max_concurrency": 1,
         },
@@ -29,7 +27,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "id": "gemini",
             "kind": "openai",
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-            "api_key_env": "GEMINI_API_KEY",
             "rpm": 10,
             "max_concurrency": 2,
         },
@@ -38,7 +35,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "id": "cerebras",
             "kind": "openai",
             "base_url": "https://api.cerebras.ai/v1",
-            "api_key_env": "CEREBRAS_API_KEY",
             "rpm": 5,
             "max_concurrency": 1,
         },
@@ -47,7 +43,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "id": "mistral",
             "kind": "openai",
             "base_url": "https://api.mistral.ai/v1",
-            "api_key_env": "MISTRAL_API_KEY",
             "rpm": 2,
             "max_concurrency": 1,
         },
@@ -56,7 +51,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "id": "groq",
             "kind": "openai",
             "base_url": "https://api.groq.com/openai/v1",
-            "api_key_env": "GROQ_API_KEY",
             "rpm": 30,
             "max_concurrency": 1,
         },
@@ -65,7 +59,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "id": "openrouter",
             "kind": "openai",
             "base_url": "https://openrouter.ai/api/v1",
-            "api_key_env": "OPENROUTER_API_KEY",
             "rpm": 20,
             "max_concurrency": 1,
         },
@@ -73,7 +66,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         {
             "id": "deepl",
             "kind": "deepl",
-            "api_key_env": "DEEPL_API_KEY",
             "monthly_chars": 500_000,
         },
         # Built-in local NLLB (CTranslate2, CPU) — needs no key, so the

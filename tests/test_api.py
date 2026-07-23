@@ -9,22 +9,26 @@ from translator.errors import ApiError
 from translator.main import create_app
 from translator.router import Router
 
-BOOT_CONFIG = AppConfig.model_validate(
-    {
-        "engines": [
-            {
-                "id": "llm",
-                "kind": "openai",
-                "base_url": "http://fake",
-                "api_key_env": "LLM_TEST_KEY",
-                "model": "some-model",
-                "max_input_tokens": 100000,
-            },
-            {"id": "local", "kind": "openai", "base_url": "http://localhost:1"},
-        ],
-        "routing": {"chapter": ["llm", "local"], "short_text": ["llm", "local"]},
-    }
-)
+# "llm" requires a key that is not set; "local" declares it needs none.
+BOOT_CONFIG_DATA = {
+    "engines": [
+        {
+            "id": "llm",
+            "kind": "openai",
+            "base_url": "http://fake",
+            "model": "some-model",
+            "max_input_tokens": 100000,
+        },
+        {
+            "id": "local",
+            "kind": "openai",
+            "base_url": "http://localhost:1",
+            "requires_key": False,
+        },
+    ],
+    "routing": {"chapter": ["llm", "local"], "short_text": ["llm", "local"]},
+}
+BOOT_CONFIG = AppConfig.model_validate(BOOT_CONFIG_DATA)
 
 
 def fake_client(*engines: FakeEngine, config: AppConfig | None = None) -> TestClient:
@@ -36,7 +40,6 @@ def fake_client(*engines: FakeEngine, config: AppConfig | None = None) -> TestCl
 @pytest.fixture
 def boot_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.delenv("AUTH_TOKEN", raising=False)
-    monkeypatch.delenv("LLM_TEST_KEY", raising=False)
     return TestClient(create_app(BOOT_CONFIG))
 
 
@@ -49,7 +52,7 @@ def test_root_serves_demo_page(boot_client: TestClient) -> None:
 
 def test_health_reports_enabled_engines(boot_client: TestClient) -> None:
     body = boot_client.get("/health").json()
-    # "llm" lacks its key env, "local" needs none.
+    # "llm" lacks its key, "local" needs none.
     assert body["status"] == "ok"
     assert body["engines_enabled"] == ["local"]
     assert body["version"]
@@ -68,8 +71,11 @@ def test_engines_listing_reflects_boot_time_keys(
 
 def test_engines_listing_with_key_set(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AUTH_TOKEN", raising=False)
-    monkeypatch.setenv("LLM_TEST_KEY", "k")
-    client = TestClient(create_app(BOOT_CONFIG))
+    keyed = AppConfig.model_validate(BOOT_CONFIG_DATA)
+    provider = keyed.provider("llm")
+    assert provider is not None
+    provider.api_key = "k"
+    client = TestClient(create_app(keyed))
     by_id = {e["id"]: e for e in client.get("/engines").json()["engines"]}
     assert by_id["llm"]["status"] == "ok"
 
@@ -199,7 +205,6 @@ def test_non_ascii_auth_header_is_401_not_500(
 
 def test_auth_enforced_when_token_set(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AUTH_TOKEN", "sekret")
-    monkeypatch.delenv("LLM_TEST_KEY", raising=False)
     client = TestClient(create_app(BOOT_CONFIG))
 
     assert client.post("/detect", json={"texts": ["hi"]}).status_code == 401

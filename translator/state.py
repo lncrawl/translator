@@ -27,7 +27,7 @@ def build_router(config: AppConfig) -> Router:
                 resolved.id,
                 "disabled in config"
                 if not resolved.enabled
-                else f"${resolved.api_key_env} not set",
+                else "no api key configured",
             )
             continue
         engines.append(build_engine(resolved))

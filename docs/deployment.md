@@ -6,16 +6,19 @@ runs in-process, so nothing else is needed. Target: a modest CPU-only VPS
 
 ## Quick start
 
-No config file is needed — the built-in defaults pre-wire every known
-free provider, and an engine activates as soon as its key env var is set:
+No config file is needed — the built-in defaults pre-wire every known free
+provider, and the keyless local NLLB lane works immediately. API keys are
+configured remotely after boot:
 
 ```bash
-export ZAI_API_KEY=...               # whichever keys you have
-export AUTH_TOKEN=...                # optional; omit on a private network
-
+export AUTH_TOKEN=...                # recommended; also enables config writes
 docker compose up -d                 # pulls ghcr.io/lncrawl/translator:latest
 curl http://localhost:8000/health    # lists which engines came up
 ```
+
+Then open http://localhost:8000/ and paste your provider API keys in the
+Providers table (or `PATCH /providers/{id}` with `{"api_key": "..."}`) —
+the matching engines enable instantly, no restart needed.
 
 Prebuilt images (amd64 + arm64) are published to
 `ghcr.io/lncrawl/translator` on every push to main (`latest`, `sha-…`) and
@@ -38,17 +41,24 @@ Three options, all optional:
 
 ## Engine keys
 
-| Env var | Where to get it |
-|---|---|
-| `ZAI_API_KEY` | https://z.ai — GLM-4.7-Flash is free with no token cap |
-| `GEMINI_API_KEY` | https://aistudio.google.com — free tier, volatile quotas |
-| `DEEPL_API_KEY` | https://www.deepl.com/pro-api — Free plan, 500K chars/mo (key ends in `:fx`) |
+Provider API keys are set remotely — web UI at `/` or
+`PATCH /providers/{id} {"api_key": "..."}` — and persist in
+`/data/config.yml`. Pre-wired providers and where to sign up:
 
-The built-in defaults also know `CEREBRAS_API_KEY`, `MISTRAL_API_KEY`,
-`GROQ_API_KEY`, and `OPENROUTER_API_KEY`. Add any other OpenAI-compatible
-provider (DeepSeek, ModelScope…) as a new `kind: openai` provider via the
-config API or config file — no code changes. Engines whose provider key env
-is unset are auto-disabled and shown as such in `GET /engines`.
+| Provider | Where to get a key |
+|---|---|
+| `zai` | https://z.ai — GLM-4.7-Flash is free with no token cap |
+| `gemini` | https://aistudio.google.com — free tier, volatile quotas |
+| `deepl` | https://www.deepl.com/pro-api — Free plan, 500K chars/mo (key ends in `:fx`) |
+| `cerebras`, `mistral`, `groq`, `openrouter` | see docs/translation-engines.md |
+
+Add any other OpenAI-compatible provider (DeepSeek, ModelScope…) as a new
+`kind: openai` provider via the config API or UI — no code changes; local
+servers that need no key take `requires_key: false`. Engines whose provider
+has no key yet are auto-disabled and shown as such in `GET /engines`.
+
+Keys live in the config file and are returned by `GET /config`, so set
+`AUTH_TOKEN` on any deployment that is not strictly private.
 
 ## Local model lane (built in)
 
@@ -122,8 +132,9 @@ Endpoints: `GET /config`, `PUT /config`, `PUT /config/failure-policy`,
 `PUT /routing`, `POST/PATCH/DELETE /providers[/{id}]`,
 `POST/PATCH/DELETE /engines[/{id}]`. Deleting an engine also removes it from
 routing lanes; deleting a provider requires deleting its engines first.
-API keys are never sent through this API — providers reference env var
-names, and keys stay in the environment.
+Provider API keys are set through this API (`PATCH /providers/{id}` with
+`api_key`) and stored in the config file; `GET /config` returns them, so
+keep the tokens set and the file private.
 
 Note: the compose file mounts `config.yml` read-write so API changes
 persist across restarts.

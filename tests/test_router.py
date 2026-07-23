@@ -95,7 +95,7 @@ async def test_disabled_engine_override_rejected() -> None:
                 "id": "off",
                 "kind": "openai",
                 "base_url": "http://fake",
-                "api_key_env": "NOPE_UNSET_KEY",
+                # requires a key by default and none is set -> disabled
             }
         ],
     )

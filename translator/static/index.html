@@ -113,6 +113,7 @@
            vertical-align: top; }
   th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
   tr:last-child td { border-bottom: none; }
+  td:last-child { white-space: nowrap; } /* keep action buttons on one line */
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
   code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
@@ -367,7 +368,8 @@
   <div class="card">
     <h2>Routing lanes</h2>
     <p class="hint">Priority order per request type; the router walks the lane and
-      uses the first engine that is enabled, keyed, and not cooling down.</p>
+      uses the first engine that is enabled, keyed, and not cooling down.
+      Engines without a working key are not offered here.</p>
     <div class="grid two">
       <div class="lane" id="lane-chapter"></div>
       <div class="lane" id="lane-short_text"></div>
@@ -438,9 +440,15 @@
     <label class="field"><span>Kind</span>
       <select id="pv-kind"><option value="openai">openai</option><option value="deepl">deepl</option><option value="nllb">nllb</option></select>
     </label>
-    <label class="field"><span>API key env var</span>
-      <input type="text" id="pv-keyenv" placeholder="MY_API_KEY"></label>
+    <label class="field"><span>API key</span>
+      <input type="password" id="pv-key" autocomplete="off" placeholder="paste token"></label>
   </div>
+  <label class="field" style="margin-top:10px"><span>
+    <input type="checkbox" id="pv-reqkey" checked style="width:auto;margin-right:6px">
+    Requires an API key (uncheck for keyless local servers)</span>
+  </label>
+  <p class="hint" style="margin:6px 0 0">The key is stored in the config file; engines on
+    this provider stay disabled until it is set.</p>
   <label class="field" style="margin-top:10px"><span>Base URL (openai kind)</span>
     <input type="text" id="pv-baseurl" placeholder="https://api.example.com/v1"></label>
   <div class="row" style="margin-top:10px">
@@ -701,6 +709,7 @@ async function refreshEnginesCache() {
   try {
     enginesCache = (await api("/engines")).engines;
     populateEngineSelects();
+    if (routingDraft) renderRouting(); // lanes hide engines without keys
   } catch { /* selects just keep "auto" */ }
 }
 
@@ -975,7 +984,11 @@ function renderProviders() {
       el("td", {}, el("span", { class: "mono" }, provider.id)),
       el("td", {}, provider.kind),
       el("td", {}, el("span", { class: "mono" }, provider.base_url || "—")),
-      el("td", {}, el("span", { class: "mono" }, provider.api_key_env || "no key needed")),
+      el("td", {}, provider.api_key
+        ? el("span", { class: "status-ok" }, "•••• set")
+        : (provider.kind === "nllb" || provider.requires_key === false)
+          ? el("span", { class: "meta" }, "none needed")
+          : el("span", { class: "status-disabled" }, "not set")),
       el("td", {}, limits),
       el("td", {},
         el("button", { class: "ghost small", onclick: () => openProviderDialog(provider) }, "Edit"),
@@ -989,7 +1002,7 @@ function renderProviders() {
   });
   $("#providers-table").replaceChildren(el("table", {},
     el("thead", {}, el("tr", {},
-      ...["Id", "Kind", "Base URL", "Key env", "Limits", ""].map((h) => el("th", {}, h)))),
+      ...["Id", "Kind", "Base URL", "Key", "Limits", ""].map((h) => el("th", {}, h)))),
     el("tbody", {}, rows)));
 }
 
@@ -1002,7 +1015,8 @@ function openProviderDialog(provider) {
   $("#pv-id").disabled = !!provider;
   $("#pv-kind").value = provider ? provider.kind : "openai";
   $("#pv-baseurl").value = provider?.base_url || "";
-  $("#pv-keyenv").value = provider?.api_key_env || "";
+  $("#pv-key").value = provider?.api_key || "";
+  $("#pv-reqkey").checked = provider ? provider.requires_key !== false : true;
   $("#pv-rps").value = provider?.rps ?? "";
   $("#pv-rpm").value = provider?.rpm ?? "";
   $("#pv-conc").value = provider?.max_concurrency ?? 1;
@@ -1016,7 +1030,8 @@ $("#pv-save").addEventListener("click", (event) => busy(event.target, async () =
   const payload = {
     kind: $("#pv-kind").value,
     base_url: $("#pv-baseurl").value.trim() || null,
-    api_key_env: $("#pv-keyenv").value.trim() || null,
+    api_key: $("#pv-key").value.trim() || null,
+    requires_key: $("#pv-reqkey").checked,
     rps: numberOrNull($("#pv-rps")),
     rpm: numberOrNull($("#pv-rpm")),
     max_concurrency: numberOrNull($("#pv-conc")) ?? 1,
@@ -1138,11 +1153,17 @@ async function confirmDelete(button, question, path) {
 const LANE_LABELS = { chapter: "Chapter lane", short_text: "Short-text lane" };
 
 function renderRouting() {
+  // Engines that cannot serve requests (disabled, or their provider has no
+  // key): not offered in the add-dropdown, flagged when already in a lane.
+  const inactive = new Set(
+    enginesCache.filter((e) => e.status === "disabled").map((e) => e.id));
   for (const lane of ["chapter", "short_text"]) {
     const box = document.getElementById(`lane-${lane}`);
     const ids = routingDraft[lane];
     const items = ids.map((engineId, index) => el("li", {},
-      el("span", { class: "mono" }, engineId), " ",
+      el("span", { class: "mono" }, engineId),
+      inactive.has(engineId)
+        ? el("span", { class: "small status-disabled" }, " (disabled)") : "", " ",
       el("button", {
         class: "ghost small", disabled: index === 0 ? "" : null,
         onclick: () => { [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]]; renderRouting(); },
@@ -1155,7 +1176,8 @@ function renderRouting() {
         class: "danger small",
         onclick: () => { ids.splice(index, 1); renderRouting(); },
       }, "✕")));
-    const unused = currentConfig.engines.map((e) => e.id).filter((id) => !ids.includes(id));
+    const unused = currentConfig.engines.map((e) => e.id)
+      .filter((id) => !ids.includes(id) && !inactive.has(id));
     const addSelect = el("select", { style: "width:auto" },
       el("option", { value: "" }, "add engine…"),
       ...unused.map((id) => el("option", { value: id }, id)));
