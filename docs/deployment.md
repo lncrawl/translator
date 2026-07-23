@@ -193,13 +193,12 @@ curl -s -X PATCH http://localhost:8184/engines/zai-glm-flash \
   -d '{"model": "glm-5-flash"}'
 
 # Add a second model on an existing provider (shares its rate limits).
-# An enabled engine is appended to both routing lanes by default so it is
-# used right away; pass ?route=false to add it without routing it.
+# New engines are not routed automatically; add them to a lane via PUT /routing.
 curl -s -X POST http://localhost:8184/engines \
   -H 'Content-Type: application/json' \
   -d '{"id": "or-qwen", "provider": "openrouter", "model": "qwen/qwen3.5-235b-a22b:free"}'
 
-# Reorder lanes
+# Reorder lanes (and add newly created engines)
 curl -s -X PUT http://localhost:8184/routing \
   -H 'Content-Type: application/json' \
   -d '{"chapter": ["or-qwen", "zai-glm-flash"], "short_text": ["zai-glm-flash"]}'
@@ -207,10 +206,10 @@ curl -s -X PUT http://localhost:8184/routing \
 
 Endpoints: `GET /config`, `PUT /config`, `PUT /config/failure-policy`,
 `PUT /routing`, `POST/PATCH/DELETE /providers[/{id}]`,
-`POST/PATCH/DELETE /engines[/{id}]`. Creating an enabled engine appends it to
-both routing lanes by default (`?route=false` to skip); deleting an engine
-removes it from the lanes; deleting a provider requires deleting its engines
-first.
+`POST/PATCH/DELETE /engines[/{id}]`. Routing lanes are configured manually via
+`PUT /routing`; creating an engine never adds it to a lane, while deleting an
+engine removes it from the lanes; deleting a provider requires deleting its
+engines first.
 
 Note: the compose file mounts `config.yml` read-write so API changes
 persist across restarts.

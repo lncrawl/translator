@@ -73,32 +73,10 @@ def test_create_engine_on_existing_provider(client: TestClient) -> None:
     assert resp.status_code == 201
     engines = {e["id"]: e for e in client.get("/engines").json()["engines"]}
     assert engines["e3"]["provider"] == "p1"
-    # An enabled engine is appended to both lanes by default so it is used.
+    # Creating an engine never touches the routing lanes; they are set manually.
     routing = client.get("/config").json()["routing"]
-    assert routing["chapter"] == ["e1", "e2", "e3"]
-    assert routing["short_text"] == ["e1", "e3"]
-
-
-def test_create_engine_route_false_skips_routing(client: TestClient) -> None:
-    resp = client.post(
-        "/engines?route=false",
-        json={"id": "e3", "provider": "p1", "model": "m3"},
-    )
-    assert resp.status_code == 201
-    routing = client.get("/config").json()["routing"]
-    assert "e3" not in routing["chapter"]
-    assert "e3" not in routing["short_text"]
-
-
-def test_create_disabled_engine_not_routed(client: TestClient) -> None:
-    resp = client.post(
-        "/engines",
-        json={"id": "e3", "provider": "p1", "model": "m3", "enabled": False},
-    )
-    assert resp.status_code == 201
-    routing = client.get("/config").json()["routing"]
-    assert "e3" not in routing["chapter"]
-    assert "e3" not in routing["short_text"]
+    assert routing["chapter"] == ["e1", "e2"]
+    assert routing["short_text"] == ["e1"]
 
 
 def test_create_engine_unknown_provider_rejected(client: TestClient) -> None:

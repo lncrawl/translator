@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from .config import (
@@ -149,26 +149,12 @@ async def delete_provider(provider_id: str, request: Request) -> Response:
 
 
 @admin_router.post("/engines", status_code=201, tags=["engines"])
-async def create_engine(
-    payload: EngineConfig,
-    request: Request,
-    route: bool = Query(
-        default=True,
-        description="Append the new engine to both routing lanes if enabled.",
-    ),
-) -> EngineConfig:
+async def create_engine(payload: EngineConfig, request: Request) -> EngineConfig:
     store = _store(request)
     if store.config.engine(payload.id) is not None:
         raise ApiError(409, "engine_exists", f"engine {payload.id!r} exists")
     data = store.config.model_dump()
     data["engines"].append(payload.model_dump())
-    # An enabled engine joins the routing lanes by default, so it is actually
-    # used without a second call; lane order is preserved and disabled engines
-    # (or route=false) are left out.
-    if route and payload.enabled:
-        for lane in ("chapter", "short_text"):
-            if payload.id not in data["routing"][lane]:
-                data["routing"][lane].append(payload.id)
     await store.apply(_validated(data))
     return payload
 
