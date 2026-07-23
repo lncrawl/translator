@@ -87,15 +87,22 @@ def test_missing_file_yields_builtin_defaults(tmp_path: Path) -> None:
 
 
 def test_default_config_engines_need_keys(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Without any key env vars, no default engine is available (nothing
-    # can fire accidentally); with one set, exactly its engines light up.
+    # Without any key env vars only the keyless local NLLB fallback is
+    # available (no API engine can fire accidentally); with a key set,
+    # exactly its engines light up too.
     config = load_config(Path("/nonexistent/config.yml"))
     for resolved in config.resolved_engines():
-        assert resolved.api_key_env is not None
-        monkeypatch.delenv(resolved.api_key_env, raising=False)
-    assert [r.id for r in config.resolved_engines() if r.available] == []
+        if resolved.api_key_env is not None:
+            monkeypatch.delenv(resolved.api_key_env, raising=False)
+    assert [r.id for r in config.resolved_engines() if r.available] == ["nllb"]
     monkeypatch.setenv("ZAI_API_KEY", "k")
-    assert [r.id for r in config.resolved_engines() if r.available] == ["zai-glm-flash"]
+    assert [r.id for r in config.resolved_engines() if r.available] == [
+        "zai-glm-flash",
+        "nllb",
+    ]
+    # NLLB is the last lane everywhere: API engines always take priority.
+    assert config.routing.chapter[-1] == "nllb"
+    assert config.routing.short_text[-1] == "nllb"
 
 
 def test_unknown_routing_reference_rejected() -> None:

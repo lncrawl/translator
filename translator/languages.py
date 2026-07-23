@@ -7,7 +7,8 @@ receive helpers instead of parsing tags themselves:
 
 - :func:`base` for routing, detection, and script checks,
 - :func:`display_name` for LLM prompts (models understand names, not codes),
-- :func:`deepl_source_lang` / :func:`deepl_target_lang` for DeepL's enums.
+- :func:`deepl_source_lang` / :func:`deepl_target_lang` for DeepL's enums,
+- :func:`nllb_lang` for NLLB's FLORES-200 codes.
 """
 
 from __future__ import annotations
@@ -72,6 +73,68 @@ _DEEPL_TARGETS = {
 }
 
 
+# FLORES-200 codes used by NLLB models. Exact tag first, then base subtag;
+# unmapped languages are unsupported by the NLLB engine (it raises).
+_NLLB_CODES = {
+    "zh": "zho_Hans",
+    "zh-Hans": "zho_Hans",
+    "zh-Hant": "zho_Hant",
+    "ja": "jpn_Jpan",
+    "ko": "kor_Hang",
+    "en": "eng_Latn",
+    "pt": "por_Latn",
+    "es": "spa_Latn",
+    "fr": "fra_Latn",
+    "de": "deu_Latn",
+    "it": "ita_Latn",
+    "ru": "rus_Cyrl",
+    "id": "ind_Latn",
+    "vi": "vie_Latn",
+    "th": "tha_Thai",
+    "tr": "tur_Latn",
+    "ar": "arb_Arab",
+    "hi": "hin_Deva",
+    "pl": "pol_Latn",
+    "nl": "nld_Latn",
+    "uk": "ukr_Cyrl",
+    "bn": "ben_Beng",
+    "fa": "pes_Arab",
+    "sv": "swe_Latn",
+    "da": "dan_Latn",
+    "no": "nob_Latn",
+    "fi": "fin_Latn",
+    "cs": "ces_Latn",
+    "ro": "ron_Latn",
+    "hu": "hun_Latn",
+    "el": "ell_Grek",
+    "he": "heb_Hebr",
+    "bg": "bul_Cyrl",
+    "sk": "slk_Latn",
+    "hr": "hrv_Latn",
+    "sr": "srp_Cyrl",
+    "ms": "zsm_Latn",
+    "tl": "tgl_Latn",
+    "ur": "urd_Arab",
+    "ta": "tam_Taml",
+    "te": "tel_Telu",
+    "ml": "mal_Mlym",
+    "mr": "mar_Deva",
+    "ne": "npi_Deva",
+    "si": "sin_Sinh",
+    "my": "mya_Mymr",
+    "km": "khm_Khmr",
+    "lo": "lao_Laoo",
+    "mn": "khk_Cyrl",
+    "az": "azj_Latn",
+    "kk": "kaz_Cyrl",
+    "uz": "uzn_Latn",
+    "ka": "kat_Geor",
+    "sw": "swh_Latn",
+    "af": "afr_Latn",
+    "ca": "cat_Latn",
+}
+
+
 def canonicalize(tag: str) -> str:
     """Validate and normalize a BCP 47 tag; raises ValueError when invalid.
 
@@ -106,6 +169,11 @@ def display_name(tag: str | None) -> str:
 def deepl_source_lang(tag: str) -> str:
     """DeepL source languages carry no variant."""
     return base(tag).upper()
+
+
+def nllb_lang(tag: str) -> str | None:
+    """The FLORES-200 code NLLB expects, or None when unsupported."""
+    return _NLLB_CODES.get(tag) or _NLLB_CODES.get(base(tag))
 
 
 def deepl_target_lang(tag: str) -> str:

@@ -1,26 +1,23 @@
-# OPTIONAL — the service ships with built-in defaults equivalent to this
-# file (see translator/defaults.py), so no config file is needed: just
-# export the key env vars you have and matching engines auto-enable.
+# OPTIONAL — without a config file the service uses built-in defaults
+# (translator/defaults.py) covering everything below; engines enable
+# themselves when their key env var is set. Copy to config.yml (or point
+# $TRANSLATOR_CONFIG at it) only to customize.
 #
-# Copy to config.yml (or point $TRANSLATOR_CONFIG at it) only to customize
-# at boot; or skip files entirely and use the runtime config API, which
-# creates and maintains the file for you (docs/deployment.md).
+#   providers:  an account at an API host — credentials + shared rate limits
+#   engines:    one model on one provider — what routing lanes reference
+#   routing:    ordered fallback lanes per task type
 #
-# A PROVIDER is an account at an API host: it owns the credentials and the
-# rate limits, which are shared by every engine (= model) using it. Define
-# multiple engines on one provider to try several models without
-# double-counting the account's limits.
-#
-# The config can also be managed at runtime over HTTP (see
-# docs/deployment.md, "Runtime config API") — changes are validated,
-# applied atomically, and written back to this file.
-#
-# All lanes below except DeepL are free WITHOUT a credit card (as of
-# 2026-07; free tiers churn — see docs/translation-engines.md).
+# Keys stay in env vars, never in this file. Everything is also editable at
+# runtime via the web UI at / or the config API (docs/deployment.md); see
+# docs/translation-engines.md for provider research.
 
 providers:
-  # z.ai — email signup. GLM-4.7-Flash is free with no token cap (~1 req/s).
-  # Best free primary for CJK→EN.
+  # Local NLLB (Meta's NLLB-200 via CTranslate2, in-process on CPU).
+  # No API key — always available.
+  - id: local-nllb
+    kind: nllb
+
+  # z.ai — free GLM flash, no token cap (~1 req/s). Best free CJK→EN primary.
   - id: zai
     kind: openai
     base_url: https://api.z.ai/api/paas/v4
@@ -28,8 +25,7 @@ providers:
     rps: 1
     max_concurrency: 1
 
-  # aistudio.google.com — Google account only. Top quality; quotas volatile
-  # (check your real limits at aistudio.google.com/rate-limit).
+  # aistudio.google.com — top quality; quotas volatile.
   - id: gemini
     kind: openai
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
@@ -37,9 +33,8 @@ providers:
     rpm: 10
     max_concurrency: 2
 
-  # openrouter.ai — 50 req/day free (1,000/day after a one-time $10 credit
-  # purchase). Free model lineup churns monthly; check openrouter.ai/models.
-  # Multiple engines below share this account's limits and quota.
+  # openrouter.ai — 50 req/day free (1,000/day after one-time $10 credit);
+  # free model lineup churns monthly.
   # - id: openrouter
   #   kind: openai
   #   base_url: https://openrouter.ai/api/v1
@@ -47,7 +42,7 @@ providers:
   #   rpm: 20
   #   max_concurrency: 1
 
-  # cloud.cerebras.ai — free tier, 1M tokens/day (~175 chapters), very fast.
+  # cloud.cerebras.ai — 1M tokens/day free, very fast.
   # - id: cerebras
   #   kind: openai
   #   base_url: https://api.cerebras.ai/v1
@@ -55,19 +50,22 @@ providers:
   #   rpm: 5
   #   max_concurrency: 1
 
-  # deepl.com/pro-api — Free plan needs a credit card at signup (never
-  # charged). Optional NMT fallback for short strings; skippable.
+  # deepl.com/pro-api — NMT for short strings; card required at signup.
   # - id: deepl
   #   kind: deepl
   #   api_key_env: DEEPL_API_KEY
   #   monthly_chars: 500000
 
-  # Local llama.cpp sidecar from compose (no api key; see docs/deployment.md).
-  # - id: local
-  #   kind: openai
-  #   base_url: http://llamacpp:8080/v1
-
 engines:
+  # Local fallback. `model` is a HF repo with a CTranslate2 conversion (or a
+  # local dir); ~1.4 GB downloaded on first use, cached under $HF_HOME.
+  # Sentence-level NMT: no glossary/context; HTML via segment extraction.
+  - id: nllb
+    provider: local-nllb
+    model: OpenNMT/nllb-200-distilled-1.3B-ct2-int8
+    # extra_body:
+    #   beam_size: 4  # better output, ~2x CPU time (default 2)
+
   - id: zai-glm-flash
     provider: zai
     model: glm-4.7-flash
@@ -78,8 +76,7 @@ engines:
     model: gemini-2.5-flash
     max_input_tokens: 250000
 
-  # Two models on one OpenRouter account — they share its rate limits, and
-  # quota exhaustion on one benches both until the reset.
+  # Engines on one provider share its rate limits and quota.
   # - id: or-nemotron
   #   provider: openrouter
   #   model: nvidia/nemotron-3-super-120b-a12b:free
@@ -89,30 +86,22 @@ engines:
   #   model: qwen/qwen3.5-235b-a22b:free
   #   max_input_tokens: 100000
 
+  # - id: cerebras-glm
+  #   provider: cerebras
+  #   model: zai-glm-4.7
+  #   max_input_tokens: 30000
+
   # - id: deepl
   #   provider: deepl
 
-  # For hybrid-thinking models (e.g. Qwen3.x), extra_body disables the
-  # reasoning phase — without it every request burns thousands of hidden
-  # thinking tokens first. Short chunks stay coherent on long passages.
-  # - id: local-qwen
-  #   provider: local
-  #   model: qwen3.5-4b
-  #   max_input_tokens: 8000
-  #   chunk_tokens: 1200
-  #   extra_body:
-  #     chat_template_kwargs:
-  #       enable_thinking: false
-
-# Lanes are tried in order; engines benched by quota or repeated failures
-# are skipped until they become eligible again.
+# Lanes are tried in order; benched engines (quota, repeated failures) are
+# skipped. Keep keyless NLLB last so the service always answers.
 routing:
-  chapter: [zai-glm-flash, gemini-flash]
-  short_text: [zai-glm-flash, gemini-flash]
+  chapter: [zai-glm-flash, gemini-flash, nllb]
+  short_text: [zai-glm-flash, gemini-flash, nllb]
 
-# Defaults shown; uncomment to tune. After `failure_threshold` consecutive
-# failures an engine is benched for `cooldown_seconds` instead of being
-# retried first-in-lane on every request.
+# Defaults shown. After `failure_threshold` consecutive failures an engine
+# is benched for `cooldown_seconds`.
 # failure_policy:
 #   transient_retries: 2
 #   backoff_base_seconds: 2.0

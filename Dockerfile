@@ -18,6 +18,8 @@ WORKDIR /app
 COPY --from=builder /app /app
 ENV PATH="/app/.venv/bin:$PATH"
 ENV TRANSLATOR_CONFIG=/data/config.yml
+# NLLB fallback model downloads land in the /data volume, not the container.
+ENV HF_HOME=/data/hf-cache
 USER app
 EXPOSE 8000
 

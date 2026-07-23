@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_PATH = "config.yml"
 CONFIG_PATH_ENV = "TRANSLATOR_CONFIG"
 
-EngineKind = Literal["openai", "deepl"]
+EngineKind = Literal["openai", "deepl", "nllb"]
 
 # Engine fields that legacy flat entries hoisted into the implicit provider.
 _LEGACY_PROVIDER_FIELDS = (

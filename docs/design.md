@@ -165,9 +165,11 @@ Engine (protocol)
 
 Implementations
  ├─ OpenAICompatEngine — covers Z.AI, Cerebras, Mistral, Groq, OpenRouter,
- │   DeepSeek, ModelScope, Gemini (via its OpenAI-compat endpoint), and
- │   local llama.cpp server. One class, config-only differences.
+ │   DeepSeek, ModelScope, Gemini (via its OpenAI-compat endpoint), and any
+ │   local OpenAI-compatible server. One class, config-only differences.
  ├─ DeepLEngine — native HTML mode + native glossaries.
+ ├─ NllbEngine — Meta's NLLB-200 in-process via CTranslate2; keyless
+ │   last-resort lane (html: none, no glossary).
  └─ (future) AzureEngine, TencentEngine — same protocol.
 ```
 
@@ -175,7 +177,7 @@ Routing sits above engines:
 
 - **Lanes**: config defines an ordered engine list per task type
   (`short_text` vs `chapter`). E.g. chapters try `zai-glm-flash` →
-  `cerebras-glm` → `mistral-large` → `local-qwen`; short texts may prefer
+  `cerebras-glm` → `mistral-large` → `nllb`; short texts may prefer
   `deepl` first.
 - **Rate limiting**: per-engine client-side token bucket (rpm/rps/tpd from
   config) so we never hammer a free tier into a ban.
@@ -197,7 +199,7 @@ Chapter HTML from lncrawl is simple (mostly `<p>`, `<br>`, occasional
    segment pipeline. Emit a warning either way.
 2. **`html: native`** (DeepL/Azure/Google): pass through with the provider's
    HTML flag.
-3. **`html: none`** (Tencent, seq2seq local models): the service extracts
+3. **`html: none`** (Tencent, NLLB, other seq2seq models): the service extracts
    text segments with BeautifulSoup, translates them (batched), and reinjects
    into the original tree. Loses cross-paragraph context — acceptable for
    fallback lanes only.
@@ -239,15 +241,13 @@ engines:
     kind: deepl
     api_key_env: DEEPL_API_KEY
     monthly_chars: 500000
-  - id: local-qwen
-    kind: openai
-    base_url: http://llamacpp:8080/v1
-    model: qwen3.5-4b
-    max_concurrency: 1
+  - id: nllb
+    kind: nllb
+    model: OpenNMT/nllb-200-distilled-1.3B-ct2-int8
 
 routing:
-  chapter: [zai-glm-flash, local-qwen]
-  short_text: [zai-glm-flash, deepl, local-qwen]
+  chapter: [zai-glm-flash, nllb]
+  short_text: [zai-glm-flash, deepl, nllb]
 ```
 
 Engines without their key env set are auto-disabled (visible in `/engines`).
@@ -256,15 +256,12 @@ change.
 
 ## Deployment shape
 
-- **Container 1: `translator`** — the FastAPI service (this repo). Small
-  image, no ML dependencies.
-- **Container 2 (optional): `llamacpp`** — official `llama.cpp` server image
-  with a GGUF model on a volume; only started when a local lane is wanted.
-  Compose file wires them; the translator treats it as just another
-  OpenAI-compatible base_url.
-
-This split keeps the service image tiny and lets the local model be
-upgraded/removed independently of the service.
+One container: the FastAPI service (this repo). The local NLLB fallback
+runs in-process via CTranslate2 (CPU-only, no GPU stack), with the model
+downloaded to the data volume on first use — so a single container is
+always able to translate, even with no API keys. Users who want an
+instruction-following local LLM lane can run any OpenAI-compatible server
+(llama.cpp, Ollama) and add it as a `kind: openai` provider.
 
 ## Non-goals (v1)
 

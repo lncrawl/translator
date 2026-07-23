@@ -1,9 +1,11 @@
 """Built-in default configuration, used when no config file exists.
 
-Covers the known free-tier providers; an engine only becomes available when
-its provider's key env var is set, so exporting whichever keys you have is
-the entire setup. Customize at runtime via the config API (the first write
-creates the config file) or by providing a config.yml.
+Covers the known free-tier providers; an API engine only becomes available
+when its provider's key env var is set, so exporting whichever keys you have
+is the entire setup. A local NLLB model (no key needed) is the last-resort
+fallback, so the service works out of the box. Customize at runtime via the
+config API (the first write creates the config file) or by providing a
+config.yml.
 
 Free tiers churn — see docs/translation-engines.md for signup details and
 config.example.yml for a commented version of this structure.
@@ -74,6 +76,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "api_key_env": "DEEPL_API_KEY",
             "monthly_chars": 500_000,
         },
+        # Built-in local NLLB (CTranslate2, CPU) — needs no key, so the
+        # service always has a working lane even with zero providers set up.
+        {
+            "id": "local-nllb",
+            "kind": "nllb",
+        },
     ],
     "engines": [
         {
@@ -113,9 +121,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "max_input_tokens": 100_000,
         },
         {"id": "deepl", "provider": "deepl"},
+        # Meta's NLLB-200 (distilled 1.3B, int8) running in-process.
+        # ~1.4 GB download from Hugging Face on first use, then cached.
+        {
+            "id": "nllb",
+            "provider": "local-nllb",
+            "model": "OpenNMT/nllb-200-distilled-1.3B-ct2-int8",
+        },
     ],
     # Priority order among whichever engines have keys set. DeepL is last
-    # for chapters (no glossary support) but early for short strings.
+    # of the API lanes for chapters (no glossary support) but early for
+    # short strings; local NLLB needs no key and is the final fallback.
     "routing": {
         "chapter": [
             "zai-glm-flash",
@@ -125,6 +141,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "or-nemotron",
             "groq-oss",
             "deepl",
+            "nllb",
         ],
         "short_text": [
             "zai-glm-flash",
@@ -134,6 +151,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "mistral-large",
             "or-nemotron",
             "groq-oss",
+            "nllb",
         ],
     },
 }

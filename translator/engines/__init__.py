@@ -29,6 +29,10 @@ def build_engine(config: ResolvedEngine) -> Engine:
         from .deepl import DeepLEngine
 
         return DeepLEngine(config)
+    if config.kind == "nllb":
+        from .nllb import NllbEngine
+
+        return NllbEngine(config)
     from .openai_compat import OpenAICompatEngine
 
     return OpenAICompatEngine(config)
@@ -39,6 +43,8 @@ def capabilities_for(config: ResolvedEngine) -> EngineCapabilities:
     (which are never instantiated) in the /engines listing."""
     if config.kind == "deepl":
         return EngineCapabilities(html=HtmlSupport.NATIVE, glossary=False)
+    if config.kind == "nllb":
+        return EngineCapabilities(html=HtmlSupport.NONE, glossary=False)
     return EngineCapabilities(
         html=HtmlSupport.PROMPT,
         glossary=True,
