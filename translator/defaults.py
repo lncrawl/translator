@@ -68,6 +68,23 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "kind": "deepl",
             "monthly_chars": 500_000,
         },
+        # Microsoft Translator via Edge's keyless auth endpoint — no account,
+        # HTML-native, strong quality. Best-effort (unofficial) fallback lane.
+        {
+            "id": "bing",
+            "kind": "bing",
+            "requires_key": False,
+            "rps": 3,
+            "max_concurrency": 2,
+        },
+        # fanyi-api.baidu.com — free tier, strong on CJK. api_key is the pair
+        # 'app_id:secret_key'; the standard free tier allows ~1 request/second.
+        {
+            "id": "baidu",
+            "kind": "baidu",
+            "rps": 1,
+            "max_concurrency": 1,
+        },
         # Built-in local NLLB (CTranslate2, CPU) — needs no key, so the
         # service always has a working lane even with zero providers set up.
         {
@@ -113,6 +130,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "max_input_tokens": 100_000,
         },
         {"id": "deepl", "provider": "deepl"},
+        {"id": "bing", "provider": "bing"},
+        {"id": "baidu", "provider": "baidu"},
         # Meta's NLLB-200 (distilled 1.3B, int8) running in-process.
         # ~1.4 GB download from Hugging Face on first use, then cached.
         {
@@ -121,9 +140,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "model": "OpenNMT/nllb-200-distilled-1.3B-ct2-int8",
         },
     ],
-    # Priority order among whichever engines have keys set. DeepL is last
-    # of the API lanes for chapters (no glossary support) but early for
-    # short strings; local NLLB needs no key and is the final fallback.
+    # Priority order among whichever engines have keys set. LLM lanes first
+    # (glossary + context). Then the keyless NMT lanes: DeepL, then Bing
+    # (keyless, HTML-native), then Baidu (CJK, needs a key); local NLLB is the
+    # final offline resort. Reorder freely in the dashboard.
     "routing": {
         "chapter": [
             "zai-glm-flash",
@@ -133,6 +153,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "or-nemotron",
             "groq-oss",
             "deepl",
+            "bing",
+            "baidu",
             "nllb",
         ],
         "short_text": [
@@ -143,6 +165,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "mistral-large",
             "or-nemotron",
             "groq-oss",
+            "bing",
+            "baidu",
             "nllb",
         ],
     },

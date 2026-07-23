@@ -183,3 +183,45 @@ def deepl_target_lang(tag: str) -> str:
     if mapped is not None:
         return mapped
     return base(tag).upper()
+
+
+# Microsoft Translator codes (keyless Bing engine). Chinese needs a script;
+# other languages use the base subtag, which matches MS's format.
+_BING = {
+    "zh": "zh-Hans",
+    "zh-Hans": "zh-Hans",
+    "zh-Hant": "zh-Hant",
+}
+
+# Baidu translate codes (machinetranslate.org/baidu); several diverge from ISO.
+_BAIDU = {
+    "ar": "ara",
+    "bn": "ben",
+    "de": "de",
+    "en": "en",
+    "es": "spa",
+    "fr": "fra",
+    "hi": "hin",
+    "id": "ind",
+    "ja": "jpn",
+    "ko": "kor",
+    "pt": "pt",
+    "ru": "ru",
+    "th": "tha",
+    "tr": "tur",
+    "ur": "urd",
+    "vi": "vie",
+    "zh": "zh",
+    "zh-Hans": "zh",
+    "zh-Hant": "cht",
+}
+
+
+def bing_lang(tag: str) -> str:
+    """Microsoft Translator code; base subtag for anything unmapped."""
+    return _BING.get(tag) or base(tag)
+
+
+def baidu_lang(tag: str) -> str | None:
+    """Baidu translate code, or None when Baidu doesn't support the tag."""
+    return _BAIDU.get(tag) or _BAIDU.get(base(tag))

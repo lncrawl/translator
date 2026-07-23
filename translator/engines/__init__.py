@@ -33,6 +33,14 @@ def build_engine(config: ResolvedEngine) -> Engine:
         from .nllb import NllbEngine
 
         return NllbEngine(config)
+    if config.kind == "bing":
+        from .bing import BingEngine
+
+        return BingEngine(config)
+    if config.kind == "baidu":
+        from .baidu import BaiduEngine
+
+        return BaiduEngine(config)
     from .openai_compat import OpenAICompatEngine
 
     return OpenAICompatEngine(config)
@@ -44,6 +52,10 @@ def capabilities_for(config: ResolvedEngine) -> EngineCapabilities:
     if config.kind == "deepl":
         return EngineCapabilities(html=HtmlSupport.NATIVE, glossary=False)
     if config.kind == "nllb":
+        return EngineCapabilities(html=HtmlSupport.NONE, glossary=False)
+    if config.kind == "bing":
+        return EngineCapabilities(html=HtmlSupport.NATIVE, glossary=False)
+    if config.kind == "baidu":
         return EngineCapabilities(html=HtmlSupport.NONE, glossary=False)
     return EngineCapabilities(
         html=HtmlSupport.PROMPT,

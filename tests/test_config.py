@@ -90,16 +90,17 @@ def test_missing_file_yields_builtin_defaults(tmp_path: Path) -> None:
 
 
 def test_default_config_engines_need_keys() -> None:
-    # Fresh defaults ship no keys: only the keyless local NLLB fallback is
-    # available (no API engine can fire accidentally). Setting a provider's
-    # key remotely lights up exactly its engines.
+    # Fresh defaults ship no keys: only the keyless lanes (Bing via Edge's
+    # keyless auth, and local NLLB) are available — no API engine can fire
+    # accidentally. Setting a provider's key remotely lights up its engines.
     config = load_config(Path("/nonexistent/config.yml"))
-    assert [r.id for r in config.resolved_engines() if r.available] == ["nllb"]
+    assert [r.id for r in config.resolved_engines() if r.available] == ["bing", "nllb"]
     provider = config.provider("zai")
     assert provider is not None
     provider.api_key = "k"
     assert [r.id for r in config.resolved_engines() if r.available] == [
         "zai-glm-flash",
+        "bing",
         "nllb",
     ]
     # NLLB is the last lane everywhere: API engines always take priority.
