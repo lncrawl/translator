@@ -232,7 +232,10 @@ context; reassemble in order. One chapter normally fits a single LLM call.
 ## Configuration
 
 A single YAML file (persisted in the container's data volume), managed
-remotely via the config API / web UI — provider API keys are part of it:
+remotely via the config API / web UI — provider API keys are part of it,
+though they are write-only through the API: responses redact stored secrets
+to a placeholder, which writes may send back to mean "keep the stored
+value".
 
 A *provider* owns credentials + rate limits; an *engine* is one model on a
 provider. The file is a sparse overlay on the built-in defaults, so usually you

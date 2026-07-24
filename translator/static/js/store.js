@@ -1,5 +1,10 @@
 import { api } from "./api.js";
 
+// Server-side sentinel for stored secrets: responses replace every saved
+// api_key/secret option with this value, and sending it back means "keep
+// the stored secret". Secrets are never readable through the API.
+export const SECRET_PLACEHOLDER = "__secret__";
+
 export const store = {
   config: null,
   engines: [],

@@ -31,6 +31,7 @@ from .schemas import (
     TranslateTextRequest,
     TranslateTextResponse,
 )
+from .secrets import redact_config
 from .state import ConfigStore
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -73,8 +74,10 @@ def health(request: Request) -> dict[str, object]:
 
 @router.get("/config", tags=["config"])
 def get_config(request: Request) -> AppConfig:
-    """The live config, including provider API keys."""
-    return _config(request)
+    """The live config. Provider secrets are write-only: each stored
+    api_key/secret option is replaced by a placeholder, which ``PUT /config``
+    accepts back as "keep the stored value"."""
+    return redact_config(_config(request))
 
 
 @router.get("/credential-schema", tags=["config"])
