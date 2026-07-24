@@ -39,7 +39,7 @@ function keyPill(provider) {
   const state = keyState(provider);
   if (state === "set") return el("span", { class: "status-ok" }, "✓ key set");
   if (state === "none-needed")
-    return el("span", { class: "status-ok" }, "✓ no key needed");
+    return el("span", { class: "status-ok" }, "✓ no key");
   return el("span", { class: "status-warn" }, "⚠ key missing");
 }
 

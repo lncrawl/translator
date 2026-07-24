@@ -23,9 +23,9 @@
   --fg-hover: #000000;
   --fg-text: #ffffff;
 
-  --ok: #067d3e;
-  --warn: #9a5b00;
-  --bad: #d1293d;
+  --ok: #518c17;
+  --warn: #8a3036;
+  --bad: #b91124;
   --code-bg: #f2f2f2;
 
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -58,9 +58,9 @@
   --fg-hover: #ffffff;
   --fg-text: #0a0a0a;
 
-  --ok: #55c07a;
-  --warn: #f0a952;
-  --bad: #ff6166;
+  --ok: #69e30b;
+  --warn: #ee4091;
+  --bad: #f96a6f;
   --code-bg: #1a1a1a;
 
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -703,6 +703,85 @@ tr:last-child td {
 td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------- engine cards (narrow) */
+/* On desktop the table carries the engine list; below 640px it re-flows into
+   one card per engine (see .engines-cards toggle at the bottom of this file). */
+.engines-cards {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+.engine-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px 12px 16px;
+  overflow: hidden;
+}
+.engine-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--border-strong);
+}
+.engine-card.sev-ok::before {
+  background: var(--ok);
+}
+.engine-card.sev-warn::before {
+  background: var(--warn);
+}
+.engine-card.sev-bad::before {
+  background: var(--bad);
+}
+.engine-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.engine-card-id {
+  font-weight: 600;
+  word-break: break-all;
+}
+.engine-card-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  align-items: baseline;
+  margin: 0;
+}
+.engine-card-meta dt {
+  color: var(--faint);
+  font-size: 11.5px;
+  font-weight: 550;
+}
+.engine-card-meta dd {
+  margin: 0;
+  text-align: right;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.engine-card-retry {
+  color: var(--warn);
+  font-size: 12px;
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+  margin-top: 10px;
+}
+@media (max-width: 640px) {
+  .engines-table {
+    display: none;
+  }
+  .engines-cards {
+    display: flex;
+  }
 }
 
 /* --------------------------------------------------------------------- misc */

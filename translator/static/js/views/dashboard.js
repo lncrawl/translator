@@ -40,6 +40,57 @@ function stat(label, value, sub, href) {
   );
 }
 
+function severity(status) {
+  if (status === "ok") return "ok";
+  if (status === "error" || status === "quota_exhausted") return "bad";
+  return "warn";
+}
+
+function slotsCell(engine) {
+  return engine.slots_total != null
+    ? el(
+        "span",
+        {
+          class: engine.slots_free === 0 ? "status-warn" : "status-ok",
+          title: `${engine.slots_free} of ${engine.slots_total} concurrency slots free`,
+        },
+        `${engine.slots_free} / ${engine.slots_total}`,
+      )
+    : el("span", { class: "meta" }, "—");
+}
+
+/* Narrow-screen counterpart to the engine table row: the same five fields as a
+   card so nothing is truncated and no sideways scroll is needed. */
+function engineCard(engine) {
+  return el(
+    "div",
+    { class: `engine-card sev-${severity(engine.status)}` },
+    el(
+      "div",
+      { class: "engine-card-top" },
+      el("span", { class: "mono engine-card-id" }, engine.id),
+      statusPill(engine.status),
+    ),
+    el(
+      "dl",
+      { class: "engine-card-meta" },
+      el("dt", {}, "Provider"),
+      el("dd", {}, engine.provider),
+      el("dt", {}, "Model"),
+      el("dd", { class: "mono" }, engine.model || "—"),
+      el("dt", {}, "Slots"),
+      el("dd", {}, slotsCell(engine)),
+    ),
+    engine.retry_at
+      ? el(
+          "div",
+          { class: "engine-card-retry" },
+          `Retry at ${new Date(engine.retry_at).toLocaleTimeString()}`,
+        )
+      : null,
+  );
+}
+
 export function onStore() {
   const { config, engines, health, reachable } = store;
   if (!config) return;
@@ -121,22 +172,10 @@ export function onStore() {
             )
           : null,
       ),
-      el(
-        "td",
-        {},
-        engine.slots_total != null
-          ? el(
-              "span",
-              {
-                class: engine.slots_free === 0 ? "status-warn" : "status-ok",
-                title: `${engine.slots_free} of ${engine.slots_total} concurrency slots free`,
-              },
-              `${engine.slots_free} / ${engine.slots_total}`,
-            )
-          : el("span", { class: "meta" }, "—"),
-      ),
+      el("td", {}, slotsCell(engine)),
     ),
   );
+  const cards = sorted.map(engineCard);
   const hiddenNote = hidden
     ? el(
         "p",
@@ -151,7 +190,12 @@ export function onStore() {
       ? el(
           "div",
           {},
-          dataTable(["Engine", "Provider", "Model", "Status", "Slots"], rows),
+          el(
+            "div",
+            { class: "engines-table" },
+            dataTable(["Engine", "Provider", "Model", "Status", "Slots"], rows),
+          ),
+          el("div", { class: "engines-cards" }, cards),
           hiddenNote,
         )
       : el(
