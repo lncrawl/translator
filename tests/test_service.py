@@ -100,6 +100,23 @@ def test_abort_signal_cancels_call() -> None:
         service.close()
 
 
+def test_timeout_aborts_call() -> None:
+    class SlowEngine(FakeEngine):
+        async def translate_segments(self, segments, **kwargs):  # type: ignore[no-untyped-def]
+            await asyncio.sleep(30)
+            return segments
+
+    service = make_service(SlowEngine("slow"))
+    try:
+        with pytest.raises(AbortedError):
+            service.translate_text(
+                {"texts": ["x"], "target_lang": "en", "source_lang": "en"},
+                timeout=0.1,
+            )
+    finally:
+        service.close()
+
+
 def test_mounted_app_shares_store_and_hops_loops() -> None:
     service = make_service(FakeEngine("e1"))
     try:

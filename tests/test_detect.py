@@ -59,3 +59,9 @@ def test_detect_code_returns_bare_code() -> None:
 def test_detect_code_is_none_when_unknown() -> None:
     assert detect_code("   ") is None
     assert detect_code("<p></p>") is None
+
+
+def test_featureless_input_is_unknown() -> None:
+    # Digits/punctuation reach langdetect (no CJK, not blank) but carry no
+    # linguistic features, so langdetect raises and we report "und".
+    assert detect_language("12345 67890 !@#$% ^&*()").language == "und"

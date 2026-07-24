@@ -3,16 +3,59 @@ from __future__ import annotations
 import pytest
 
 from translator.prompts import (
+    build_html_messages,
     filter_glossary,
     parse_html_response,
     parse_text_response,
 )
+from translator.schemas import HtmlContext
 
 
 def test_filter_glossary_keeps_only_present_terms() -> None:
     glossary = {"萧炎": "Xiao Yan", "药老": "Yao Lao"}
     assert filter_glossary(glossary, ["萧炎走了进来"]) == {"萧炎": "Xiao Yan"}
     assert filter_glossary({}, ["anything"]) == {}
+
+
+def test_build_html_messages_carries_context_glossary_and_new_terms_contract() -> None:
+    context = HtmlContext(
+        novel_title="Battle Through the Heavens",
+        chapter_title="Chapter 1",
+        synopsis="A young genius loses his power.",
+        previous_chapter_tail="…and then he vanished.",
+    )
+    messages = build_html_messages(
+        "<p>萧炎走了进来</p>",
+        source_lang="zh",
+        target_lang="en",
+        glossary={"萧炎": "Xiao Yan"},
+        context=context,
+        extract_terms=True,
+    )
+    system = messages[0]["content"]
+    user = messages[1]["content"]
+    # extract_terms=True adds the NEW_TERMS instruction with the key/value contract.
+    assert "<NEW_TERMS>" in system
+    assert "exactly as written in the untranslated source" in system.replace("\n", " ")
+    # Context lines and the glossary are threaded into the user turn.
+    assert "Battle Through the Heavens" in user
+    assert "Chapter 1" in user
+    assert "A young genius loses his power." in user
+    assert "…and then he vanished." in user
+    assert "萧炎" in user and "Xiao Yan" in user
+    assert "<p>萧炎走了进来</p>" in user
+
+
+def test_build_html_messages_omits_new_terms_when_extraction_off() -> None:
+    messages = build_html_messages(
+        "<p>hi</p>",
+        source_lang="zh",
+        target_lang="en",
+        glossary={},
+        context=None,
+        extract_terms=False,
+    )
+    assert "<NEW_TERMS>" not in messages[0]["content"]
 
 
 def test_parse_text_response_plain_and_fenced() -> None:
