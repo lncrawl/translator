@@ -22,7 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # setup-uv stopped publishing floating major tags after v7 — pin exact.
       - uses: astral-sh/setup-uv@v8.3.2
         with:
           enable-cache: true
@@ -39,13 +38,3 @@ jobs:
 
       - name: Test
         run: uv run poe test
-
-  docker:
-    # PRs only: pushes to main already build in the publish workflow.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Build image
-        run: docker build -t translator:ci .
