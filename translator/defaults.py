@@ -26,13 +26,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "kind": "bing",
             "requires_key": False,
             "rps": 3,
-            "max_concurrency": 2,
+            "max_concurrency": 6,
         },
         # deepl.com/pro-api — NMT fallback for short strings; HTML-native.
         {
             "id": "deepl",
             "kind": "deepl",
             "monthly_chars": 500_000,
+            "max_concurrency": 6,
         },
         # Local OpenAI-compatible LLM server (Docker Model Runner, llama.cpp,
         # Ollama, LM Studio etc.)
@@ -49,7 +50,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "kind": "openai",
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
             "rpm": 10,
-            "max_concurrency": 2,
+            "max_concurrency": 8,
         },
         # console.groq.com — free, no card, very fast; small token/day cap, so
         # it burns out quickly on long novels but is a good burst/short lane.
@@ -58,7 +59,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "kind": "openai",
             "base_url": "https://api.groq.com/openai/v1",
             "rpm": 30,
-            "max_concurrency": 1,
+            "max_concurrency": 8,
         },
         # openrouter.ai — 50 req/day free; model lineup churns monthly.
         {
@@ -66,7 +67,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "kind": "openai",
             "base_url": "https://openrouter.ai/api/v1",
             "rpm": 20,
-            "max_concurrency": 1,
+            "max_concurrency": 8,
         },
         # cloud.sambanova.ai — free API key, no card; very fast RDU inference.
         # 50 req/day free, 1,000/day after a one-time $10 top-up.
@@ -75,7 +76,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "kind": "openai",
             "base_url": "https://api.sambanova.ai/v1",
             "rpm": 10,
-            "max_concurrency": 1,
+            "max_concurrency": 4,
         },
         # chutes.ai — no card; hosts open DeepSeek / Qwen / GLM weights, strong
         # on CJK. OpenAI-compatible; free lineup varies.
@@ -84,7 +85,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "kind": "openai",
             "base_url": "https://llm.chutes.ai/v1",
             "rpm": 30,
-            "max_concurrency": 2,
+            "max_concurrency": 8,
         },
     ],
     "engines": [
