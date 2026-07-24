@@ -18,6 +18,7 @@ from typing import Any
 import httpx
 
 from ..config import ResolvedEngine
+from ..glossary import protect, reinject
 from ..languages import baidu_lang
 from .base import (
     CredentialField,
@@ -62,7 +63,7 @@ class BaiduEngine(Engine):
 
     @property
     def capabilities(self) -> EngineCapabilities:
-        return EngineCapabilities(html=HtmlSupport.NONE, glossary=False)
+        return EngineCapabilities(html=HtmlSupport.NONE, glossary=True)
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -127,12 +128,15 @@ class BaiduEngine(Engine):
                 ErrorKind.FATAL,
             )
 
-        results = list(segments)
+        # Baidu has no dictionary; enforce glossary terms by placeholder
+        # substitution around the request (placeholders survive the flattening).
+        protected = [protect(s, glossary) for s in segments]
+        mappings = [m for _, m in protected]
+
+        results = [p for p, _ in protected]
         # Baidu splits q on newlines, so flatten each segment to a single line
         # and skip empties (Baidu drops blank lines, which would misalign).
-        indexed = [
-            (i, " ".join(s.split())) for i, s in enumerate(segments) if s.strip()
-        ]
+        indexed = [(i, " ".join(s.split())) for i, s in enumerate(results) if s.strip()]
 
         batch: list[tuple[int, str]] = []
         batch_bytes = 0
@@ -145,7 +149,7 @@ class BaiduEngine(Engine):
             batch_bytes += line_bytes
         if batch:
             await self._flush(batch, target, results)
-        return results
+        return [reinject(r, m) for r, m in zip(results, mappings)]
 
     async def _flush(
         self, batch: list[tuple[int, str]], target: str, results: list[str]

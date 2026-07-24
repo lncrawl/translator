@@ -111,3 +111,27 @@ def test_mounted_app_shares_store_and_hops_loops() -> None:
         assert service.config.routing.chapter == ["e1"]
     finally:
         service.close()
+
+
+def test_service_construction_from_worker_thread() -> None:
+    # Engines must not bind asyncio primitives at construction: the embedded
+    # service is built lazily on whatever host thread first needs it, and
+    # Python 3.9 binds primitives to a loop at construction time.
+    from pathlib import Path
+
+    from translator.config import load_config
+
+    errors: list[Exception] = []
+
+    def work() -> None:
+        try:
+            service = TranslatorService(config=load_config(Path("/nonexistent.yml")))
+            service.detect(["hello world"])
+            service.close()
+        except Exception as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    thread = threading.Thread(target=work)
+    thread.start()
+    thread.join(30)
+    assert not errors, errors

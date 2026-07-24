@@ -3,7 +3,9 @@
 `edge.microsoft.com/translate/auth` issues a short-lived bearer token (the same
 one Edge's built-in page translator uses); it authorizes the public
 `api.cognitive.microsofttranslator.com` translate API. No account or API key.
-Native HTML handling via `textType=html`; no glossary support.
+Native HTML handling via `textType=html`. Glossary terms are enforced with the
+service's own `<mstrans:dictionary>` markup, which forces an exact translation
+for a wrapped span in both text and HTML modes.
 
 Unofficial free use of a Microsoft endpoint — a best-effort fallback lane, not
 an SLA'd provider. It can change or throttle without notice.
@@ -12,7 +14,9 @@ an SLA'd provider. It can change or throttle without notice.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
+from html import escape
 from typing import Any
 
 import httpx
@@ -45,15 +49,40 @@ class BingEngine(Engine):
         self._client = httpx.AsyncClient(timeout=_TIMEOUT)
         self._token: str = ""
         self._token_expiry: float = float("-inf")
-        self._token_lock = asyncio.Lock()
+        self._lazy_token_lock: asyncio.Lock | None = None
+
+    @property
+    def _token_lock(self) -> asyncio.Lock:
+        if self._lazy_token_lock is None:
+            self._lazy_token_lock = asyncio.Lock()
+        return self._lazy_token_lock
 
     @property
     def capabilities(self) -> EngineCapabilities:
         return EngineCapabilities(
             html=HtmlSupport.NATIVE,
-            glossary=False,
+            glossary=True,
             max_input_tokens=_MAX_INPUT_TOKENS,
         )
+
+    @staticmethod
+    def _apply_glossary(text: str, glossary: dict[str, str]) -> str:
+        """Wrap glossary source terms in the service's forced-translation markup.
+
+        A single non-overlapping pass (longest terms first) so a term already
+        wrapped isn't rewrapped when a shorter term is a substring of it.
+        """
+        terms = sorted((src for src in glossary if src), key=len, reverse=True)
+        if not terms:
+            return text
+        pattern = re.compile("|".join(re.escape(src) for src in terms))
+
+        def wrap(match: re.Match[str]) -> str:
+            src = match.group(0)
+            dst = escape(glossary[src], quote=True)
+            return f'<mstrans:dictionary translation="{dst}">{src}</mstrans:dictionary>'
+
+        return pattern.sub(wrap, text)
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -137,8 +166,9 @@ class BingEngine(Engine):
     ) -> list[str]:
         if not segments:
             return []
+        prepared = [self._apply_glossary(s, glossary) for s in segments]
         return await self._translate(
-            segments, source_lang=source_lang, target_lang=target_lang, html=False
+            prepared, source_lang=source_lang, target_lang=target_lang, html=False
         )
 
     async def translate_html(
@@ -151,7 +181,8 @@ class BingEngine(Engine):
         context: HtmlContext | None = None,
         extract_terms: bool = True,
     ) -> HtmlResult:
+        prepared = self._apply_glossary(html, glossary)
         translated = await self._translate(
-            [html], source_lang=source_lang, target_lang=target_lang, html=True
+            [prepared], source_lang=source_lang, target_lang=target_lang, html=True
         )
         return HtmlResult(html=translated[0])

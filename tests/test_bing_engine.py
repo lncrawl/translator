@@ -30,7 +30,7 @@ def test_capabilities_are_html_native() -> None:
     engine = make_engine(_handler(httpx.Response(200, json=[])))
     caps = engine.capabilities
     assert caps.html is HtmlSupport.NATIVE
-    assert caps.glossary is False
+    assert caps.glossary is True
 
 
 async def test_translate_segments_aligns_and_maps_language() -> None:
@@ -79,6 +79,30 @@ async def test_translate_html_sets_texttype() -> None:
     params = seen["params"]
     assert isinstance(params, dict)
     assert params["textType"] == "html"
+
+
+async def test_glossary_wraps_terms_in_dictionary_markup() -> None:
+    seen: dict[str, object] = {}
+
+    def route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "edge.microsoft.com":
+            return httpx.Response(200, text="TOKEN123")
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=[{"translations": [{"text": "Xiao Yan"}]}])
+
+    engine = make_engine(httpx.MockTransport(route))
+    await engine.translate_segments(
+        ["萧炎 出现了"],
+        source_lang="zh",
+        target_lang="en",
+        glossary={"萧炎": "Xiao Yan"},
+    )
+    body = seen["body"]
+    assert isinstance(body, list)
+    sent = body[0]["Text"]
+    assert (
+        '<mstrans:dictionary translation="Xiao Yan">萧炎</mstrans:dictionary>' in sent
+    )
 
 
 async def test_429_is_quota() -> None:

@@ -52,6 +52,23 @@ async def test_translate_html_uses_tag_handling() -> None:
     assert body["source_lang"] == "ZH"
 
 
+async def test_glossary_terms_are_enforced() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen["sent"] = body["text"][0]
+        # DeepL sees a placeholder, not the term, and keeps it verbatim.
+        return httpx.Response(200, json={"translations": [{"text": body["text"][0]}]})
+
+    engine = make_engine(httpx.MockTransport(handler))
+    out = await engine.translate_segments(
+        ["萧炎"], source_lang="zh", target_lang="en", glossary={"萧炎": "Xiao Yan"}
+    )
+    assert out == ["Xiao Yan"]
+    assert seen["sent"] != "萧炎"  # the raw term never reached the engine
+
+
 async def test_456_is_quota_until_next_month() -> None:
     engine = make_engine(
         httpx.MockTransport(lambda _: httpx.Response(456, text="quota exceeded"))

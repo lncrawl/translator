@@ -31,7 +31,7 @@ def test_capabilities_are_text_only() -> None:
     engine = make_engine(httpx.MockTransport(lambda _: httpx.Response(200, json={})))
     caps = engine.capabilities
     assert caps.html is HtmlSupport.NONE
-    assert caps.glossary is False
+    assert caps.glossary is True
 
 
 def test_availability_gated_on_options() -> None:
@@ -83,6 +83,31 @@ async def test_translate_segments_batches_and_signs() -> None:
     assert form["to"] == "en"
     assert form["appid"] == "app123"
     assert len(form["sign"]) == 32  # md5 hexdigest
+
+
+async def test_glossary_terms_are_enforced() -> None:
+    def route(request: httpx.Request) -> httpx.Response:
+        form = {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
+        lines = form["q"].split("\n")
+        # Baidu can't take a dictionary; it sees placeholders, not the term,
+        # and echoes them back untranslated inside otherwise-translated text.
+        return httpx.Response(
+            200,
+            json={
+                "trans_result": [
+                    {"src": ln, "dst": ln.replace("出现", "appears")} for ln in lines
+                ]
+            },
+        )
+
+    engine = make_engine(httpx.MockTransport(route))
+    out = await engine.translate_segments(
+        ["萧炎出现"],
+        source_lang="zh",
+        target_lang="en",
+        glossary={"萧炎": "Xiao Yan"},
+    )
+    assert out == ["Xiao Yanappears"]
 
 
 async def test_unsupported_target_is_fatal() -> None:

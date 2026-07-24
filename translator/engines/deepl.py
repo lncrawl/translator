@@ -1,9 +1,9 @@
 """DeepL API engine (Free or Pro key).
 
-Native HTML handling via tag_handling=html. Request-level glossaries are not
-applied in v1: DeepL glossaries are persistent server-side resources, which
-doesn't fit a stateless per-request flow — the router surfaces a warning when
-a glossary is provided.
+Native HTML handling via tag_handling=html. DeepL's own glossaries are
+persistent server-side resources that don't fit a stateless per-request flow,
+so terms are enforced client-side by placeholder substitution around the
+request (see ``translator.glossary``).
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from ..config import ResolvedEngine
+from ..glossary import protect, reinject
 from ..languages import deepl_source_lang, deepl_target_lang
 from ..schemas import HtmlContext
 from .base import (
@@ -66,7 +67,7 @@ class DeepLEngine(Engine):
 
     @property
     def capabilities(self) -> EngineCapabilities:
-        return EngineCapabilities(html=HtmlSupport.NATIVE, glossary=False)
+        return EngineCapabilities(html=HtmlSupport.NATIVE, glossary=True)
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -129,12 +130,14 @@ class DeepLEngine(Engine):
         glossary: dict[str, str],
         context: str | None = None,
     ) -> list[str]:
-        return await self._translate(
-            segments,
+        protected = [protect(s, glossary) for s in segments]
+        translated = await self._translate(
+            [p for p, _ in protected],
             source_lang=source_lang,
             target_lang=target_lang,
             html=False,
         )
+        return [reinject(t, m) for t, (_, m) in zip(translated, protected)]
 
     async def translate_html(
         self,
@@ -146,10 +149,11 @@ class DeepLEngine(Engine):
         context: HtmlContext | None = None,
         extract_terms: bool = True,
     ) -> HtmlResult:
+        protected, mapping = protect(html, glossary)
         translated = await self._translate(
-            [html],
+            [protected],
             source_lang=source_lang,
             target_lang=target_lang,
             html=True,
         )
-        return HtmlResult(html=translated[0])
+        return HtmlResult(html=reinject(translated[0], mapping))
