@@ -117,7 +117,11 @@ def create_app(
         openapi_tags=[
             {"name": "translation", "description": "Translate and detect language"},
             {"name": "engines", "description": "Engine status and management"},
-            {"name": "providers", "description": "Provider accounts and API keys"},
+            {
+                "name": "providers",
+                "description": "Provider accounts and API keys (secrets are"
+                " write-only: set here, redacted in every response)",
+            },
             {"name": "config", "description": "Whole-config, routing, and policy"},
             {"name": "service", "description": "Liveness and readiness"},
         ],

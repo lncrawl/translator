@@ -8,7 +8,7 @@ import {
   dropdown,
 } from "../ui.js";
 import { icon } from "../icons.js";
-import { store, mutate } from "../store.js";
+import { store, mutate, SECRET_PLACEHOLDER } from "../store.js";
 
 export const id = "provider-edit";
 export const title = "Provider";
@@ -131,7 +131,10 @@ function render() {
   });
 
   // Credentials are declared per kind by the backend (/credential-schema) and
-  // rendered dynamically; the eye toggle reveals a secret input.
+  // rendered dynamically. Secrets are write-only: the server never returns a
+  // stored value (only a placeholder), so saved secret inputs start empty —
+  // leave blank to keep, type to replace, or hit Remove to clear. The eye
+  // toggle only reveals what is being typed right now.
   const reqKeyRow = el(
     "label",
     { class: "field" },
@@ -153,7 +156,7 @@ function render() {
     return provider.options?.[key] || "";
   }
 
-  function secretControl(input) {
+  function secretControl(input, clearBtn) {
     const button = el(
       "button",
       {
@@ -177,6 +180,7 @@ function render() {
       { style: "display:flex;gap:6px;align-items:center" },
       input,
       button,
+      clearBtn || null,
     );
   }
 
@@ -190,19 +194,55 @@ function render() {
     }
     credsBox.replaceChildren(
       ...fields.map((f) => {
+        const stored = initialValue(f.key);
+        const saved = f.secret && !!stored;
+        const entry = { secret: f.secret, saved, cleared: false };
+        const keepHint = "saved — leave blank to keep";
         const input = el("input", {
           type: f.secret ? "password" : "text",
-          value: initialValue(f.key),
+          // Secrets are never prefilled — the server only sends a placeholder.
+          value: f.secret ? "" : stored,
           autocomplete: "off",
-          placeholder: f.secret ? "paste token" : "",
+          placeholder: f.secret ? (saved ? keepHint : "paste token") : "",
           style: "flex:1;min-width:0",
+          oninput: () => {
+            if (entry.cleared && input.value) setCleared(false);
+          },
         });
-        credInputs[f.key] = input;
+        entry.input = input;
+        credInputs[f.key] = entry;
+        if (!f.secret) {
+          return el(
+            "label",
+            { class: "field" },
+            el("span", {}, f.label),
+            input,
+            f.description
+              ? el("small", { class: "hint" }, f.description)
+              : null,
+          );
+        }
+        const clearBtn = saved
+          ? el(
+              "button",
+              {
+                type: "button",
+                class: "ghost small",
+                onclick: () => setCleared(!entry.cleared),
+              },
+              "Remove",
+            )
+          : null;
+        function setCleared(on) {
+          entry.cleared = on;
+          input.placeholder = on ? "will be removed on save" : keepHint;
+          if (clearBtn) clearBtn.textContent = on ? "Keep" : "Remove";
+        }
         return el(
           "label",
           { class: "field" },
           el("span", {}, f.label),
-          f.secret ? secretControl(input) : input,
+          secretControl(input, clearBtn),
           f.description ? el("small", { class: "hint" }, f.description) : null,
         );
       }),
@@ -222,7 +262,10 @@ function render() {
       concInput.value,
       monthlyInput.value,
       Object.fromEntries(
-        Object.entries(credInputs).map(([k, input]) => [k, input.value]),
+        Object.entries(credInputs).map(([k, entry]) => [
+          k,
+          [entry.input.value, entry.cleared],
+        ]),
       ),
     ]);
   baseline = collect();
@@ -241,8 +284,14 @@ function render() {
           const options = {};
           let apiKey = null;
           for (const f of schemaFields()) {
-            const value = (credInputs[f.key]?.value || "").trim();
-            if (f.key === "api_key") apiKey = value || null;
+            const entry = credInputs[f.key];
+            const typed = (entry?.input.value || "").trim();
+            // Typed value replaces; blank keeps the saved secret (sent as the
+            // placeholder, which the server resolves) unless marked cleared.
+            const value =
+              typed ||
+              (entry?.saved && !entry.cleared ? SECRET_PLACEHOLDER : null);
+            if (f.key === "api_key") apiKey = value;
             else if (value) options[f.key] = value;
           }
           const payload = {
@@ -318,7 +367,7 @@ function render() {
       el(
         "p",
         { class: "hint", style: "margin:6px 0 0" },
-        "Credentials are stored in the config file; engines on this provider stay disabled until they are set.",
+        "Credentials are stored in the config file and are write-only: once saved they are never shown again. Engines on this provider stay disabled until they are set.",
       ),
       el(
         "div",

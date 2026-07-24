@@ -4,6 +4,10 @@ Every mutation builds a candidate config from the live one, revalidates it as
 a whole, then applies it atomically via the ConfigStore (which also persists
 it back to the YAML file). The API is unauthenticated by design — the
 service is meant for localhost or a private network; don't expose it.
+
+Provider secrets are write-only: they can be set here but every response is
+redacted, and the placeholder sent back means "keep the stored value" (see
+the ``secrets`` module).
 """
 
 from __future__ import annotations
@@ -22,6 +26,12 @@ from .config import (
     RoutingConfig,
 )
 from .errors import ApiError
+from .secrets import (
+    redact_config,
+    redact_provider,
+    resolve_config_secrets,
+    resolve_provider_secrets,
+)
 from .state import ConfigStore
 
 admin_router = APIRouter()
@@ -68,8 +78,13 @@ class EnginePatch(BaseModel):
 
 @admin_router.put("/config", tags=["config"])
 async def replace_config(payload: AppConfig, request: Request) -> AppConfig:
-    await _store(request).apply(payload)
-    return payload
+    """Replace the whole config. Secret placeholders (as returned by
+    ``GET /config``) resolve to the currently stored secrets, so a redacted
+    config round-trips without touching them. Responses are redacted."""
+    store = _store(request)
+    resolved = resolve_config_secrets(payload, store.config)
+    await store.apply(resolved)
+    return redact_config(resolved)
 
 
 @admin_router.put("/config/failure-policy", tags=["config"])
@@ -101,9 +116,13 @@ async def create_provider(payload: ProviderConfig, request: Request) -> Provider
     if store.config.provider(payload.id) is not None:
         raise ApiError(409, "provider_exists", f"provider {payload.id!r} exists")
     data = store.config.model_dump()
-    data["providers"].append(payload.model_dump())
-    await store.apply(_validated(data))
-    return payload
+    # A new provider has no stored secrets, so placeholders are dropped.
+    data["providers"].append(resolve_provider_secrets(payload.model_dump(), None))
+    new_config = _validated(data)
+    await store.apply(new_config)
+    created = new_config.provider(payload.id)
+    assert created is not None
+    return redact_provider(created)
 
 
 @admin_router.patch("/providers/{provider_id:path}", tags=["providers"])
@@ -111,10 +130,12 @@ async def update_provider(
     provider_id: str, payload: ProviderPatch, request: Request
 ) -> ProviderConfig:
     store = _store(request)
-    if store.config.provider(provider_id) is None:
+    stored = store.config.provider(provider_id)
+    if stored is None:
         raise ApiError(404, "not_found", f"unknown provider {provider_id!r}")
     data = store.config.model_dump()
-    changes = payload.model_dump(exclude_unset=True)
+    # Placeholder values mean "keep the stored secret" (see secrets module).
+    changes = resolve_provider_secrets(payload.model_dump(exclude_unset=True), stored)
     for entry in data["providers"]:
         if entry["id"] == provider_id:
             entry.update(changes)
@@ -122,7 +143,7 @@ async def update_provider(
     await store.apply(new_config)
     updated = new_config.provider(provider_id)
     assert updated is not None
-    return updated
+    return redact_provider(updated)
 
 
 @admin_router.delete(

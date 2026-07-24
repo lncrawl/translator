@@ -58,7 +58,10 @@ export function mount(root) {
       "The full runtime config as JSON. Apply validates on the server and " +
         "replaces the whole config, persisting to config.yml (",
       el("code", {}, "PUT /config"),
-      "). Edits stay local until you apply them.",
+      "). Edits stay local until you apply them. Saved provider secrets " +
+        "show as ",
+      el("code", {}, '"__secret__"'),
+      " and are kept as-is on apply; paste a real value to replace one.",
     ),
     el(
       "div",

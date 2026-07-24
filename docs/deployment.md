@@ -129,8 +129,12 @@ as a new `kind: openai` provider via the config API or UI — no code changes;
 local servers that need no key take `requires_key: false`. Engines whose
 provider has no key yet are auto-disabled and shown as such in `GET /engines`.
 
-Keys live in the config file and are returned by `GET /config`, so keep
-the service on a private network and the file out of version control.
+Keys live in the config file and are **write-only** through the API: every
+response (including `GET /config`) replaces stored secrets with the
+`"__secret__"` placeholder, and sending that placeholder back means "keep
+the stored value" — so a fetched config can be edited and re-applied
+without ever exposing a token. Still keep the service on a private network
+and the config file out of version control.
 
 ## Local LLM lane (optional)
 
@@ -153,9 +157,12 @@ plain NMT model would.
 
 The API is completely open — no authentication. It is designed for
 localhost or a trusted internal network only. Anyone who can reach the
-port can translate, read provider API keys via `GET /config`, and change
-the config. Never expose port 8184 to the internet; if remote access is
-needed, put it behind a reverse proxy that handles auth + TLS.
+port can translate and change the config (including pointing a provider at
+their own `base_url`, which would receive the stored key). Provider API
+keys themselves are write-only — no endpoint ever returns a stored secret,
+only a redaction placeholder. Never expose port 8184 to the internet; if
+remote access is needed, put it behind a reverse proxy that handles
+auth + TLS.
 
 ## Runtime config API
 
