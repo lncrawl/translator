@@ -81,12 +81,14 @@ class TranslatorService:
     def config(self) -> AppConfig:
         return self.store.config
 
-    def create_app(self) -> FastAPI:
+    def create_app(self, auth: bool = False) -> FastAPI:
         """The dashboard + HTTP API wired to this service's live config,
-        for mounting into a host ASGI application."""
+        for mounting into a host ASGI application. Set ``auth`` to declare a
+        Bearer scheme so the docs show an Authorize button; the host still
+        verifies the token."""
         from .app import create_app
 
-        return create_app(store=self.store)
+        return create_app(store=self.store, auth=auth)
 
     def detect(self, texts: Iterable[str]) -> list[Detection]:
         """Local language detection; no engine quota, no event loop."""

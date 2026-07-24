@@ -1,6 +1,15 @@
+// When embedded behind an auth proxy, the host passes an admin token in the URL
+// fragment (never sent to the server). Capture it once, send it as a Bearer
+// header, and clear it from the URL so it doesn't linger in history.
+const AUTH_TOKEN = new URLSearchParams(location.hash.slice(1)).get("token");
+if (AUTH_TOKEN) {
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
 export async function api(path, { method = "GET", body } = {}) {
   const headers = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (AUTH_TOKEN) headers["Authorization"] = "Bearer " + AUTH_TOKEN;
   let res;
   // Relative to the document base so the app works under a reverse-proxy prefix
   // (lncrawl injects a <base href>); the leading slash would defeat that.

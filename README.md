@@ -79,9 +79,13 @@ service immediately:
 app.mount("/translator", service.create_app())
 ```
 
-The mounted app carries no authentication (same as the standalone server) —
-the host must gate access itself. Language detection is also available
-without a service: `from translator import detect_language`.
+The mounted app carries no authentication of its own — the host gates access.
+If the host verifies a Bearer token, pass `create_app(auth=True)`: the OpenAPI
+then declares an `HTTPBearer` scheme (so the docs' Authorize button works), and
+the dashboard reads an admin token from the page's URL fragment (`#token=…`) and
+sends it as a Bearer header on its API calls. The token is not enforced here —
+the host still verifies it. Language detection is also available without a
+service: `from translator import detect_language`.
 
 ## Development
 

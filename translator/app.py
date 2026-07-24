@@ -12,9 +12,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Security
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import Headers
 from starlette.middleware.base import RequestResponseEndpoint
@@ -69,6 +70,7 @@ def create_app(
     engine_router: Router | None = None,
     config_path: str | Path | None = None,
     store: ConfigStore | None = None,
+    auth: bool = False,
 ) -> FastAPI:
     """Build the app. When ``config`` is given explicitly (tests), runtime
     config changes are not persisted unless ``config_path`` is also given.
@@ -77,6 +79,10 @@ def create_app(
     app next to a ``TranslatorService`` sharing the same store), the caller
     owns the store's lifecycle — the app will not close it. Mounted sub-app
     lifespans never run under Starlette, so nothing here may depend on one.
+
+    ``auth`` declares an HTTPBearer scheme so the docs show an Authorize button
+    and clients send a Bearer token; it is not enforced here (the app has no
+    user model) — a mounting host is expected to verify the token.
     """
     owned_store = store is None
     if store is None:
@@ -95,10 +101,16 @@ def create_app(
         if owned_store:
             await store.close()
 
+    # Declared, not enforced: adds the Authorize button and marks operations as
+    # secured in the schema so clients send a Bearer token; auto_error=False
+    # keeps standalone (no-proxy) use open.
+    dependencies = [Security(HTTPBearer(auto_error=False))] if auth else []
+
     app = FastAPI(
         title="translator",
         version=__version__,
         lifespan=lifespan,
+        dependencies=dependencies,
         openapi_tags=[
             {"name": "translation", "description": "Translate and detect language"},
             {"name": "engines", "description": "Engine status and management"},

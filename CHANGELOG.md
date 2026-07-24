@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-07-24
+
+### Added
+
+- Optional auth for embedded mode: `create_app(auth=True)` declares an
+  `HTTPBearer` scheme so the mounted dashboard's docs show an Authorize
+  button, and the dashboard reads an admin token from the page's URL
+  fragment (`#token=…`) and sends it as a Bearer header on its API calls.
+  The token is not enforced here — the mounting host verifies it. Standalone
+  use is unchanged (unauthenticated).
+
+### Fixed
+
+- `__version__` is now read from the installed package metadata instead of a
+  hardcoded constant, which had drifted (the 0.1.1 release reported `0.1.0`).
+
 ## [0.1.1] - 2026-07-24
 
 ### Fixed

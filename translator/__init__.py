@@ -7,9 +7,14 @@ Public entry points (lazily imported so ``import translator`` stays light):
 - ``create_app`` — FastAPI app factory (dashboard + HTTP API).
 """
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as get_version
 from typing import Any
 
-__version__ = "0.1.0"
+try:
+    __version__ = get_version("lncrawl-translator")
+except PackageNotFoundError:  # running from a source tree without an install
+    __version__ = "0.0.0"
 
 __all__ = [
     "Detection",
