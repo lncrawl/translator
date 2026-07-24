@@ -20,6 +20,10 @@ _HAN = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 # Detection quality saturates quickly; cap work on chapter-sized inputs.
 _MAX_CHARS = 4000
 
+# Hanzi may only claim zh when it dominates the text; a latin-script sentence
+# quoting a few hanzi terms (names, titles) belongs to the statistical detector.
+_MIN_HAN_FRACTION = 0.25
+
 
 @dataclass(frozen=True)
 class Detection:
@@ -80,7 +84,7 @@ def detect_language(text: str) -> Detection:
             return Detection("ko", min(0.99, 0.8 + 0.02 * hangul))
         # Hanzi-only: statistically Chinese, but a kanji-only Japanese title
         # is indistinguishable — report zh with honest, size-scaled confidence.
-        if han > 0 and han >= hangul:
+        if han > 0 and han >= hangul and han / len(plain) >= _MIN_HAN_FRACTION:
             return Detection("zh", min(0.95, 0.6 + 0.01 * han))
 
     return _langdetect_detect(plain)

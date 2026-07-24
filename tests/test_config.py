@@ -74,14 +74,18 @@ def test_sparse_overlay_merges_defaults(tmp_path: Path) -> None:
     path = tmp_path / "config.yml"
     path.write_text("providers:\n  - id: gemini\n    api_key: k\n", encoding="utf-8")
     config = load_config(path)
-    assert {e.id for e in config.engines} >= {"gemini-flash", "groq-oss", "bing"}
+    assert {e.id for e in config.engines} >= {
+        "gemini-flash-latest",
+        "groq-oss-120b",
+        "bing",
+    }
     gemini = config.provider("gemini")
     assert gemini is not None
     assert gemini.api_key == "k"
     # The default's base_url survives the merge (not clobbered by the overlay).
     assert gemini.base_url == "https://generativelanguage.googleapis.com/v1beta/openai"
     # Setting the key lights up the engine; defaults for others still apply.
-    assert is_available(config.resolved("gemini-flash"))  # type: ignore[arg-type]
+    assert is_available(config.resolved("gemini-flash-latest"))  # type: ignore[arg-type]
 
 
 def test_build_overlay_is_sparse() -> None:
@@ -103,10 +107,10 @@ def test_overlay_removals_suppress_defaults(tmp_path: Path) -> None:
     ids = {e.id for e in config.engines}
     assert config.provider("groq") is None
     # groq's engine goes with the removed provider; bing is removed directly.
-    assert {"groq-oss", "bing"}.isdisjoint(ids)
+    assert {"groq-oss-120b", "bing"}.isdisjoint(ids)
     # Removed engines are pruned from the (default) routing lanes too.
     assert "bing" not in config.routing.chapter
-    assert "groq-oss" not in config.routing.short_text
+    assert "groq-oss-120b" not in config.routing.short_text
 
 
 def test_removals_round_trip_through_save(tmp_path: Path) -> None:
@@ -142,7 +146,7 @@ def test_legacy_flat_config_skips_default_merge(tmp_path: Path) -> None:
 def test_missing_file_yields_builtin_defaults(tmp_path: Path) -> None:
     config = load_config(tmp_path / "nope.yml")
     engine_ids = {e.id for e in config.engines}
-    assert "gemini-flash" in engine_ids
+    assert "gemini-flash-latest" in engine_ids
     routed = set(config.routing.chapter) | set(config.routing.short_text)
     # Lanes only reference real engines, and every *enabled* engine is routed.
     # Disabled examples (local-model templates) may sit unrouted until enabled.
@@ -161,9 +165,9 @@ def test_default_config_engines_need_keys() -> None:
     assert provider is not None
     provider.api_key = "k"
     assert [r.id for r in config.resolved_engines() if is_available(r)] == [
-        "gemini-flash",
-        "gemini-flash-lite",
         "bing",
+        "gemini-flash-latest",
+        "gemini-flash-lite-latest",
     ]
     # Bing is the default lane, first everywhere.
     assert config.routing.chapter[0] == "bing"

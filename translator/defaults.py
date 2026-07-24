@@ -89,42 +89,35 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
     ],
     "engines": [
-        # "-latest" aliases track Google's current flash release, so they don't
-        # 404 when a version is retired (2.5-flash already is).
         {
-            "id": "gemini-flash",
+            "id": "bing",
+            "provider": "bing",
+        },
+        {
+            "id": "gemini-flash-latest",
             "provider": "gemini",
             "model": "gemini-flash-latest",
             "max_input_tokens": 250_000,
         },
         {
-            "id": "gemini-flash-lite",
+            "id": "gemini-flash-lite-latest",
             "provider": "gemini",
             "model": "gemini-flash-lite-latest",
             "max_input_tokens": 250_000,
         },
         {
-            "id": "groq-oss",
+            "id": "groq-oss-120b",
             "provider": "groq",
             "model": "openai/gpt-oss-120b",
             "max_input_tokens": 8_000,
         },
-        # OpenRouter gpt-oss-120b via the :nitro (highest-throughput) route;
-        # needs an openrouter api key, so it's auto-disabled until one is set.
         {
-            "id": "gpt-oss-120b:nitro",
+            "id": "gpt-oss-120b-nitro",
             "provider": "openrouter",
             "model": "openai/gpt-oss-120b:nitro",
             "max_input_tokens": 8_000,
-            "chunk_tokens": 2_000,
         },
-        {
-            "id": "bing",
-            "provider": "bing",
-        },
-        # Disabled example: set `model` to one you've pulled, enable it, add it
-        # to a routing lane. Budgets are sized small for quantized local models;
-        # enable_thinking=false stops reasoning models burning the budget.
+        # Disabled example: Pull this model in Docker Desktop first and enable it.
         {
             "id": "qwen3.5-4B",
             "provider": "local-llm",
@@ -143,16 +136,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "routing": {
         "chapter": [
             "bing",
-            "gemini-flash",
-            "gemini-flash-lite",
-            "gpt-oss-120b:nitro",
+            "gemini-flash-latest",
+            "gemini-flash-lite-latest",
+            "gpt-oss-120b-nitro",
         ],
         "short_text": [
             "bing",
-            "groq-oss",
-            "gemini-flash",
-            "gemini-flash-lite",
-            "gpt-oss-120b:nitro",
+            "groq-oss-120b",
+            "gemini-flash-latest",
+            "gemini-flash-lite-latest",
+            "gpt-oss-120b-nitro",
         ],
     },
 }

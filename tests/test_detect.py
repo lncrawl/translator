@@ -40,3 +40,10 @@ def test_hanzi_only_title_reports_zh_with_moderate_confidence() -> None:
     d = detect_language("転生賢者")
     assert d.language == "zh"
     assert d.confidence < 0.8
+
+
+def test_latin_text_quoting_hanzi_terms_is_not_chinese() -> None:
+    # A few hanzi names inside latin-script prose must not hijack detection;
+    # the statistical detector judges the dominant script instead.
+    d = detect_language("The protagonist opened the 斗气大陆 map and smiled.")
+    assert d.language == "en"
