@@ -72,26 +72,26 @@ def test_save_config_round_trips(tmp_path: Path) -> None:
 def test_sparse_overlay_merges_defaults(tmp_path: Path) -> None:
     # A file listing only one provider key still gets every default engine.
     path = tmp_path / "config.yml"
-    path.write_text("providers:\n  - id: zai\n    api_key: k\n", encoding="utf-8")
+    path.write_text("providers:\n  - id: gemini\n    api_key: k\n", encoding="utf-8")
     config = load_config(path)
-    assert {e.id for e in config.engines} >= {"zai-glm-flash", "gemini-flash", "nllb"}
-    zai = config.provider("zai")
-    assert zai is not None
-    assert zai.api_key == "k"
+    assert {e.id for e in config.engines} >= {"gemini-flash", "groq-oss", "bing"}
+    gemini = config.provider("gemini")
+    assert gemini is not None
+    assert gemini.api_key == "k"
     # The default's base_url survives the merge (not clobbered by the overlay).
-    assert zai.base_url == "https://api.z.ai/api/paas/v4"
+    assert gemini.base_url == "https://generativelanguage.googleapis.com/v1beta/openai"
     # Setting the key lights up the engine; defaults for others still apply.
-    assert is_available(config.resolved("zai-glm-flash"))  # type: ignore[arg-type]
+    assert is_available(config.resolved("gemini-flash"))  # type: ignore[arg-type]
 
 
 def test_build_overlay_is_sparse() -> None:
     config = load_config(Path("/nonexistent.yml"))  # built-in defaults
-    provider = config.provider("zai")
+    provider = config.provider("gemini")
     assert provider is not None
     provider.api_key = "secret"
     overlay = build_overlay(config)
     # Only the one changed field is written — not the whole default tree.
-    assert overlay == {"providers": [{"id": "zai", "api_key": "secret"}]}
+    assert overlay == {"providers": [{"id": "gemini", "api_key": "secret"}]}
 
 
 def test_overlay_removals_suppress_defaults(tmp_path: Path) -> None:
@@ -102,8 +102,8 @@ def test_overlay_removals_suppress_defaults(tmp_path: Path) -> None:
     config = load_config(path)
     ids = {e.id for e in config.engines}
     assert config.provider("groq") is None
-    # groq's engines go with the removed provider; bing is removed directly.
-    assert {"groq-oss", "groq-llama", "bing"}.isdisjoint(ids)
+    # groq's engine goes with the removed provider; bing is removed directly.
+    assert {"groq-oss", "bing"}.isdisjoint(ids)
     # Removed engines are pruned from the (default) routing lanes too.
     assert "bing" not in config.routing.chapter
     assert "groq-oss" not in config.routing.short_text
@@ -111,20 +111,20 @@ def test_overlay_removals_suppress_defaults(tmp_path: Path) -> None:
 
 def test_removals_round_trip_through_save(tmp_path: Path) -> None:
     config = load_config(Path("/nonexistent.yml"))  # built-in defaults
-    config.engines = [e for e in config.engines if e.id != "baidu"]
-    config.providers = [p for p in config.providers if p.id != "baidu"]
-    config.routing.chapter = [i for i in config.routing.chapter if i != "baidu"]
-    config.routing.short_text = [i for i in config.routing.short_text if i != "baidu"]
+    config.engines = [e for e in config.engines if e.id != "bing"]
+    config.providers = [p for p in config.providers if p.id != "bing"]
+    config.routing.chapter = [i for i in config.routing.chapter if i != "bing"]
+    config.routing.short_text = [i for i in config.routing.short_text if i != "bing"]
     path = tmp_path / "config.yml"
     save_config(config, path)
     saved = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert saved.get("removed_providers") == ["baidu"]
-    assert "baidu" in saved.get("removed_engines", [])
+    assert saved.get("removed_providers") == ["bing"]
+    assert "bing" in saved.get("removed_engines", [])
     reloaded = load_config(path)
-    assert reloaded.provider("baidu") is None
-    assert reloaded.engine("baidu") is None
+    assert reloaded.provider("bing") is None
+    assert reloaded.engine("bing") is None
     # Everything else still merges in from defaults.
-    assert reloaded.provider("zai") is not None
+    assert reloaded.provider("gemini") is not None
 
 
 def test_legacy_flat_config_skips_default_merge(tmp_path: Path) -> None:
@@ -142,30 +142,32 @@ def test_legacy_flat_config_skips_default_merge(tmp_path: Path) -> None:
 def test_missing_file_yields_builtin_defaults(tmp_path: Path) -> None:
     config = load_config(tmp_path / "nope.yml")
     engine_ids = {e.id for e in config.engines}
-    assert "zai-glm-flash" in engine_ids
-    # Every default engine is routed somewhere, and lanes validate.
+    assert "gemini-flash" in engine_ids
     routed = set(config.routing.chapter) | set(config.routing.short_text)
-    assert engine_ids == routed
+    # Lanes only reference real engines, and every *enabled* engine is routed.
+    # Disabled examples (local-model templates) may sit unrouted until enabled.
+    assert routed <= engine_ids
+    assert {e.id for e in config.engines if e.enabled} == routed
 
 
 def test_default_config_engines_need_keys() -> None:
-    # Fresh defaults ship no keys: only the keyless lanes (Bing via Edge's
-    # keyless auth, and local NLLB) are available — no API engine can fire
-    # accidentally. Setting a provider's key remotely lights up its engines.
+    # Fresh defaults ship no keys: only the keyless Bing lane (via Edge's
+    # keyless auth) is available — no API engine can fire accidentally.
+    # Setting a provider's key remotely lights up its engines.
     config = load_config(Path("/nonexistent/config.yml"))
     available = [r.id for r in config.resolved_engines() if is_available(r)]
-    assert available == ["bing", "nllb"]
-    provider = config.provider("zai")
+    assert available == ["bing"]
+    provider = config.provider("gemini")
     assert provider is not None
     provider.api_key = "k"
     assert [r.id for r in config.resolved_engines() if is_available(r)] == [
-        "zai-glm-flash",
+        "gemini-flash",
+        "gemini-flash-lite",
         "bing",
-        "nllb",
     ]
-    # NLLB is the last lane everywhere: API engines always take priority.
-    assert config.routing.chapter[-1] == "nllb"
-    assert config.routing.short_text[-1] == "nllb"
+    # Bing is the default lane, first everywhere.
+    assert config.routing.chapter[0] == "bing"
+    assert config.routing.short_text[0] == "bing"
 
 
 def test_unknown_routing_reference_rejected() -> None:

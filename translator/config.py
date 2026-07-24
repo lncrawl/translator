@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_PATH = "config.yml"
 CONFIG_PATH_ENV = "TRANSLATOR_CONFIG"
 
-EngineKind = Literal["openai", "deepl", "nllb", "bing", "baidu"]
+EngineKind = Literal["openai", "deepl", "bing", "baidu"]
 
 # Engine fields that legacy flat entries hoisted into the implicit provider.
 _LEGACY_PROVIDER_FIELDS = (
@@ -75,6 +75,14 @@ class EngineConfig(BaseModel):
     # max_input_tokens. Lower it for small local models, which stay
     # coherent on shorter passages.
     chunk_tokens: int | None = Field(default=None, gt=0)
+    # Language coverage, as base ISO 639-1 codes. ``None`` means unrestricted,
+    # which is what LLM lanes use (they translate any pair via the prompt).
+    # Setting either list gates the engine to those languages so the router
+    # rejects unsupported pairs before dispatching. Engines with intrinsic
+    # coverage (baidu) declare it in code; these lists only narrow
+    # it further.
+    source_langs: list[str] | None = None
+    target_langs: list[str] | None = None
     # Extra fields merged into every chat completion request — e.g.
     # {chat_template_kwargs: {enable_thinking: false}} to stop hybrid
     # reasoning models from burning tokens on thinking.
@@ -96,6 +104,8 @@ class ResolvedEngine(BaseModel):
     enabled: bool
     max_input_tokens: int | None
     chunk_tokens: int | None
+    source_langs: list[str] | None = None
+    target_langs: list[str] | None = None
     extra_body: dict[str, Any] = {}
 
     def credential(self, key: str) -> str | None:
@@ -209,6 +219,8 @@ class AppConfig(BaseModel):
             enabled=engine.enabled,
             max_input_tokens=engine.max_input_tokens,
             chunk_tokens=engine.chunk_tokens,
+            source_langs=engine.source_langs,
+            target_langs=engine.target_langs,
             extra_body=engine.extra_body,
         )
 
@@ -280,6 +292,22 @@ def _apply_overlay(defaults: dict[str, Any], overlay: dict[str, Any]) -> dict[st
         if pid not in seen_providers and pid not in removed_providers:
             providers.append(entry)
             seen_providers.add(pid)
+    # Drop providers that can no longer form a usable account: an openai
+    # provider with no base_url is a sparse overlay (e.g. just an api_key) for
+    # a default that has since been removed — its base_url is gone with the
+    # default. Prune it (and, below, its engines) instead of failing the whole
+    # config to load.
+    kept: list[dict[str, Any]] = []
+    for provider in providers:
+        if provider.get("kind", "openai") == "openai" and not provider.get("base_url"):
+            logger.warning(
+                "dropping provider %r: openai kind without base_url"
+                " (stale overlay for a removed default?)",
+                provider.get("id"),
+            )
+            continue
+        kept.append(provider)
+    providers = kept
     provider_ids = {p["id"] for p in providers}
 
     engines: list[dict[str, Any]] = []

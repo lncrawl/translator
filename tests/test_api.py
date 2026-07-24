@@ -44,7 +44,7 @@ def test_root_serves_demo_page(boot_client: TestClient) -> None:
     resp = boot_client.get("/")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/html")
-    assert "<title>translator" in resp.text
+    assert "<title>Translator" in resp.text
 
 
 def test_static_app_assets_served(boot_client: TestClient) -> None:

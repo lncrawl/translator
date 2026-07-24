@@ -34,10 +34,6 @@ def build_engine(config: ResolvedEngine) -> Engine:
         from .deepl import DeepLEngine
 
         return DeepLEngine(config)
-    if config.kind == "nllb":
-        from .nllb import NllbEngine
-
-        return NllbEngine(config)
     if config.kind == "bing":
         from .bing import BingEngine
 
@@ -54,18 +50,21 @@ def build_engine(config: ResolvedEngine) -> Engine:
 def capabilities_for(config: ResolvedEngine) -> EngineCapabilities:
     """Capabilities from config alone — used to describe disabled engines
     (which are never instantiated) in the /engines listing."""
-    if config.kind == "deepl":
-        return EngineCapabilities(html=HtmlSupport.NATIVE, glossary=False)
-    if config.kind == "nllb":
-        return EngineCapabilities(html=HtmlSupport.NONE, glossary=False)
-    if config.kind == "bing":
-        return EngineCapabilities(html=HtmlSupport.NATIVE, glossary=False)
-    if config.kind == "baidu":
-        return EngineCapabilities(html=HtmlSupport.NONE, glossary=False)
+    from ..languages import coverage_langs
+
+    source_langs, target_langs = coverage_langs(config)
+    if config.kind in ("deepl", "bing"):
+        html, glossary, max_tokens = HtmlSupport.NATIVE, False, None
+    elif config.kind == "baidu":
+        html, glossary, max_tokens = HtmlSupport.NONE, False, None
+    else:
+        html, glossary, max_tokens = HtmlSupport.PROMPT, True, config.max_input_tokens
     return EngineCapabilities(
-        html=HtmlSupport.PROMPT,
-        glossary=True,
-        max_input_tokens=config.max_input_tokens,
+        html=html,
+        glossary=glossary,
+        max_input_tokens=max_tokens,
+        source_langs=source_langs,
+        target_langs=target_langs,
     )
 
 
@@ -80,7 +79,7 @@ def credential_fields(kind: EngineKind) -> list[CredentialField]:
         from .baidu import BaiduEngine
 
         return BaiduEngine.CREDENTIALS
-    if kind in ("nllb", "bing"):
+    if kind == "bing":
         return []
     from .openai_compat import OpenAICompatEngine
 

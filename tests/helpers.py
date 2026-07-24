@@ -55,6 +55,8 @@ class FakeEngine(Engine):
         chunk_tokens: int | None = None,
         errors: list[Exception] | None = None,
         new_terms: dict[str, str] | None = None,
+        source_langs: list[str] | None = None,
+        target_langs: list[str] | None = None,
     ) -> None:
         super().__init__(
             ResolvedEngine(
@@ -67,6 +69,8 @@ class FakeEngine(Engine):
                 enabled=True,
                 max_input_tokens=None,
                 chunk_tokens=chunk_tokens,
+                source_langs=source_langs,
+                target_langs=target_langs,
             )
         )
         self._caps = EngineCapabilities(

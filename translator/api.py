@@ -99,6 +99,8 @@ def list_engines(request: Request) -> EnginesResponse:
                     html=caps.html.value,
                     glossary=caps.glossary,
                     max_input_tokens=caps.max_input_tokens,
+                    source_langs=caps.source_langs,
+                    target_langs=caps.target_langs,
                 ),
                 status=status.value,
                 retry_at=engine_router.retry_at(resolved.id),

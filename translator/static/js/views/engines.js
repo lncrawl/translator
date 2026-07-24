@@ -108,12 +108,20 @@ export function onStore() {
   const cards = visible.map((engine) => {
     const live = liveEngine(engine.id);
     const caps = live?.capabilities;
+    const langList = (list) => (list ? list.join(",") : "any");
+    // Only shown when the lane is language-restricted (e.g. Baidu);
+    // broad LLM/DeepL/Bing lanes stay uncluttered.
+    const langFact =
+      caps && (caps.source_langs || caps.target_langs)
+        ? `langs: ${langList(caps.source_langs)} → ${langList(caps.target_langs)}`
+        : null;
     const facts = [
       caps ? `html: ${caps.html}` : null,
       caps ? `glossary: ${caps.glossary ? "yes" : "no"}` : null,
       engine.max_input_tokens
         ? `≤ ${engine.max_input_tokens.toLocaleString()} tokens`
         : null,
+      langFact,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -169,6 +177,7 @@ export function onStore() {
         "div",
         { class: "foot" },
         toggle,
+        el("span", { class: "spacer" }),
         el(
           "button",
           {
@@ -178,7 +187,6 @@ export function onStore() {
           },
           "Edit",
         ),
-        el("span", { class: "spacer" }),
         el(
           "button",
           {

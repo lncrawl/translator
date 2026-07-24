@@ -7,7 +7,7 @@ A stateless HTTP translation service for web novels, consumed by lncrawl
 
 - Translate short texts (titles, author, tags, synopsis) and HTML chapter
   bodies (~2,000 words), best quality for ZH/JA/KO→EN.
-- Zero cost by default: free hosted lanes + local model, switchable by config.
+- Zero cost by default: keyless Bing + free hosted lanes, switchable by config.
 - Fully stateless: glossary arrives in the request, returns (extended) in the
   response.
 - Batch-friendly: built around free-tier rate limits, not speed.
@@ -168,17 +168,18 @@ Implementations
  │   DeepSeek, ModelScope, Gemini (via its OpenAI-compat endpoint), and any
  │   local OpenAI-compatible server. One class, config-only differences.
  ├─ DeepLEngine — native HTML mode + native glossaries.
- ├─ NllbEngine — Meta's NLLB-200 in-process via CTranslate2; keyless
- │   last-resort lane (html: none, no glossary).
+ ├─ BingEngine — Microsoft Translator via Edge's keyless endpoint; the
+ │   default keyless lane (html: native, no glossary).
+ ├─ BaiduEngine — Baidu Translate (html: none, no glossary).
  └─ (future) AzureEngine, TencentEngine — same protocol.
 ```
 
 Routing sits above engines:
 
 - **Lanes**: config defines an ordered engine list per task type
-  (`short_text` vs `chapter`). E.g. chapters try `zai-glm-flash` →
-  `cerebras-glm` → `mistral-large` → `nllb`; short texts may prefer
-  `deepl` first.
+  (`short_text` vs `chapter`). E.g. the default chapter lane is `bing` →
+  `gemini-flash` → `gemini-flash-lite` → `gpt-oss-120b:nitro`, keyless Bing
+  first so it always works.
 - **Rate limiting**: per-*provider* client-side pacing (rpm/rps from config),
   shared by every engine on the account, so we never hammer a free tier into
   a ban.
@@ -204,7 +205,7 @@ Chapter HTML from lncrawl is simple (mostly `<p>`, `<br>`, occasional
    segment pipeline. Emit a warning either way.
 2. **`html: native`** (DeepL/Azure/Google): pass through with the provider's
    HTML flag.
-3. **`html: none`** (Tencent, NLLB, other seq2seq models): the service extracts
+3. **`html: none`** (Baidu, other seq2seq models): the service extracts
    text segments with BeautifulSoup, translates them (batched), and reinjects
    into the original tree. Loses cross-paragraph context — acceptable for
    fallback lanes only.
@@ -233,27 +234,19 @@ context; reassemble in order. One chapter normally fits a single LLM call.
 A single YAML file (persisted in the container's data volume), managed
 remotely via the config API / web UI — provider API keys are part of it:
 
-```yaml
-engines:
-  - id: zai-glm-flash
-    kind: openai
-    base_url: https://api.z.ai/api/paas/v4
-    api_key: <token>
-    model: glm-4.7-flash
-    rps: 1
-    max_concurrency: 1
-    max_input_tokens: 200000
-  - id: deepl
-    kind: deepl
-    api_key: <token>
-    monthly_chars: 500000
-  - id: nllb
-    kind: nllb
-    model: OpenNMT/nllb-200-distilled-1.3B-ct2-int8
+A *provider* owns credentials + rate limits; an *engine* is one model on a
+provider. The file is a sparse overlay on the built-in defaults, so usually you
+just set a key:
 
+```yaml
+providers:
+  - id: gemini # set a key to enable this provider's gemini-* engines
+    api_key: <token>
+
+# engines/routing are optional here — the defaults (keyless bing, gemini,
+# groq, an openrouter lane) already apply. Override only what you change:
 routing:
-  chapter: [zai-glm-flash, nllb]
-  short_text: [zai-glm-flash, deepl, nllb]
+  chapter: [bing, gemini-flash] # keyless Bing first, then keyed lanes
 ```
 
 Engines whose provider requires a key that is not set yet are auto-disabled
@@ -262,12 +255,11 @@ config edit, never a code change.
 
 ## Deployment shape
 
-One container: the FastAPI service (this repo). The local NLLB fallback
-runs in-process via CTranslate2 (CPU-only, no GPU stack), with the model
-downloaded to the data volume on first use — so a single container is
-always able to translate, even with no API keys. Users who want an
-instruction-following local LLM lane can run any OpenAI-compatible server
-(llama.cpp, Ollama) and add it as a `kind: openai` provider.
+One container: the FastAPI service (this repo), a thin HTTP client with no
+in-process ML stack. The keyless Bing lane means a single container can always
+translate even with no API keys. Users who want an offline/local lane can run
+any OpenAI-compatible server (llama.cpp, Ollama, Docker Model Runner) and point
+the pre-wired `local-llm` provider at it.
 
 ## Non-goals (v1)
 

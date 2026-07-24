@@ -13,9 +13,9 @@ consistency across thousands of chapters.
 
 ## Quick start
 
-No config file needed — every known free provider is pre-wired, and a
-built-in local NLLB model (no key required) is the last-resort fallback,
-so translation works even with zero keys:
+No config file needed — a curated set of free providers is pre-wired, and the
+keyless Bing lane (no key required) is the default, so translation works even
+with zero keys:
 
 ```bash
 docker compose up -d
@@ -25,8 +25,8 @@ curl http://localhost:8184/health  # shows which engines came up
 Then open http://localhost:8184/ and paste your provider API keys — the
 matching engines enable instantly, no restart needed.
 
-See [docs/deployment.md](docs/deployment.md) for engine keys, the built-in
-local-model lane, and API examples; [docs/design.md](docs/design.md) for the
+See [docs/deployment.md](docs/deployment.md) for engine keys, the keyless
+Bing lane, and API examples; [docs/design.md](docs/design.md) for the
 API and architecture; [docs/translation-engines.md](docs/translation-engines.md)
 for the engine research.
 

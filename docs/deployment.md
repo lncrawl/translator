@@ -1,13 +1,13 @@
 # Deployment
 
-The service runs as one small container; the local-model fallback (NLLB)
-runs in-process, so nothing else is needed. Target: a modest CPU-only VPS
-(~4 vCPU, 8 GB RAM).
+The service runs as one small container with no local ML stack — every lane
+is a hosted API or the keyless Bing endpoint. Target: a modest CPU-only VPS
+(~1 vCPU, 512 MB RAM is plenty).
 
 ## Quick start
 
-No config file is needed — the built-in defaults pre-wire every known free
-provider, and the keyless local NLLB lane works immediately. API keys are
+No config file is needed — the built-in defaults pre-wire a curated set of
+free providers, and the keyless Bing lane works immediately. API keys are
 configured remotely after boot:
 
 ```bash
@@ -87,21 +87,21 @@ Other overlay operations:
 - **Override one field** of a default engine (the rest is inherited):
   ```yaml
   engines:
-    - id: nllb
-      extra_body: {beam_size: 4}  # better output, ~2x CPU time
+    - id: gemini-flash
+      max_input_tokens: 100000 # smaller context than the default
   ```
 - **Drop a default** you never want, by id (a removed provider takes its
   engines with it):
   ```yaml
   removed_providers: [groq]
-  removed_engines: [groq-oss, groq-llama]
+  removed_engines: [groq-oss]
   ```
 - **Reorder/restrict a routing lane** — only the lanes you list change; omit
-  `routing` to keep the default order (every default engine, keyless NLLB
-  last):
+  `routing` to keep the default order (keyless Bing first, then the keyed LLM
+  lanes):
   ```yaml
   routing:
-    chapter: [zai-glm-flash, gemini-flash, nllb]
+    chapter: [gemini-flash, bing]
   ```
 
 Legacy flat configs (engines carrying `base_url`/`kind` inline instead of a
@@ -114,18 +114,15 @@ Provider API keys are set remotely — web UI at `/` or
 `PATCH /providers/{id} {"api_key": "..."}` — and persist in
 `/data/config.yml`. Pre-wired providers and where to sign up:
 
-| Provider | Where to get a key |
-|---|---|
-| `zai` | https://z.ai — GLM-4.7-Flash is free with no token cap |
-| `gemini` | https://aistudio.google.com — free tier, volatile quotas |
-| `deepl` | https://www.deepl.com/pro-api — Free plan, 500K chars/mo (key ends in `:fx`) |
-| `baidu` | https://fanyi-api.baidu.com — `app_id` + `secret_key` (strong on CJK) |
-| `cerebras`, `mistral`, `groq`, `openrouter`, `modelscope`, `dashscope`, `nvidia` | see docs/translation-engines.md |
+| Provider | Where to get a key                                                        |
+| -------- | ------------------------------------------------------------------------- |
+| `gemini` | https://aistudio.google.com — free tier (~1,500 req/day), volatile quotas |
+| `groq`   | https://console.groq.com — free, no card; small daily token cap           |
 
-`bing` (Microsoft Translator via Edge's keyless endpoint) needs no key and is
-available out of the box. `baidu` takes two named credentials — set them in
-one call: `PATCH /providers/baidu {"options": {"app_id": "...", "secret_key":
-"..."}}`.
+`bing` (Microsoft Translator via Edge's keyless endpoint) is the default lane
+and needs no key — the service translates out of the box with zero accounts.
+The pre-wired `local-llm` provider is also keyless (it points at a local
+OpenAI-compatible server).
 
 Add any other OpenAI-compatible provider (DeepSeek, Cloudflare Workers AI…)
 as a new `kind: openai` provider via the config API or UI — no code changes;
@@ -135,33 +132,22 @@ provider has no key yet are auto-disabled and shown as such in `GET /engines`.
 Keys live in the config file and are returned by `GET /config`, so keep
 the service on a private network and the file out of version control.
 
-## Local model lane (built in)
+## Local LLM lane (optional)
 
-The last lane in the default routing is `nllb` — Meta's NLLB-200 NMT model
-(distilled 1.3B, int8) running in-process on CPU via CTranslate2. It needs
-no API key, so translation works out of the box even with zero provider
-accounts.
+The service ships no in-process model — it stays a thin HTTP client, so the
+container is small and CPU-only with no ML stack. For an offline/local lane,
+run an OpenAI-compatible server (Docker Model Runner, llama.cpp, Ollama, LM
+Studio) and use the pre-wired `local-llm` provider (or add your own). The
+default config includes a disabled `qwen3.5-4B` engine as a template — pull a
+model into your runner, point `model` at it, enable it, and add it to a
+routing lane:
 
-- The model (~1.4 GB) is downloaded from Hugging Face on the first request
-  that reaches the lane and cached under `$HF_HOME` (`/data/hf-cache` in the
-  container, inside the compose volume) — later boots reuse it.
-- It is sentence-level NMT: fast and always available, but no glossary,
-  context, or instruction following. HTML is handled by the service's
-  segment extraction, so markup is preserved.
-- Memory: ~2 GB resident while loaded; fits alongside the service on an
-  8 GB box.
-- To change quality/speed: swap `model` to another CTranslate2 conversion —
-  `OpenNMT/nllb-200-3.3B-ct2-int8` for best NLLB quality (slow on CPU), or
-  the community `JustFrederik/nllb-200-distilled-600M-ct2-int8` for half
-  the size and ~2x speed — or raise `extra_body.beam_size` (default 2) for
-  slightly better output at proportional cost.
-- To disable it (e.g. on a tiny box where the download/RAM is unwelcome):
-  `PATCH /engines/nllb {"enabled": false}` or remove it from the routing
-  lanes.
+```bash
+PATCH /engines/qwen3.5-4B {"enabled": true, "model": "<your-pulled-model>"}
+```
 
-An OpenAI-compatible local server (llama.cpp, Ollama, Docker Model Runner)
-can still be added as a regular `kind: openai` provider pointing at its URL
-if you want an instruction-following local LLM lane instead.
+An instruction-following local LLM applies the glossary and context, unlike a
+plain NMT model would.
 
 ## Security
 
@@ -219,12 +205,12 @@ persist across restarts.
 - **Busy engine** (its provider's `max_concurrency` slots are all in use):
   skipped in favor of the next lane engine that can start immediately, so
   load spills down the lane instead of queueing behind the top engine. If
-  *every* eligible engine is busy the request waits, in lane order — it is
+  _every_ eligible engine is busy the request waits, in lane order — it is
   never rejected just for being busy.
 - **Transient errors** (5xx, timeouts, 429 with a short `Retry-After`):
   retried on the same engine with exponential backoff
   (`failure_policy.transient_retries`, default 2).
-- **Quota errors** (long 429, 402, DeepL 456): the whole *provider* is
+- **Quota errors** (long 429, 402, DeepL 456): the whole _provider_ is
   benched until the reset time — all its models skip together.
 - **Repeated failures**: after `failure_threshold` consecutive failed
   requests (default 3) an engine is benched for `cooldown_seconds`

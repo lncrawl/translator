@@ -1,31 +1,49 @@
 """Built-in default configuration, used when no config file exists.
 
-Covers the known free-tier providers, pre-wired without credentials: an
-API engine becomes available once its provider's ``api_key`` is set via
-the web UI at / or the config API (the first write creates the config
-file). A local NLLB model (no key needed) is the last-resort fallback,
-so the service works out of the box.
+Curated free-tier providers, pre-wired without credentials; each API engine
+lights up once its ``api_key`` is set. Bing (keyless, HTML-native NMT) is the
+default lane; the LLM lanes (glossary + context) are used when keyed. A
+``config.yml`` is a sparse overlay merged onto these by
+id (see ``config.py``), so changes here reach existing installs. Free tiers
+churn (model ids especially) — verify in the provider console; signup details
+in docs/translation-engines.md.
 
-These defaults are always the base layer: any ``config.yml`` is a sparse
-overlay merged onto them by id (see ``config.py`` and the deployment guide),
-so additions or changes here reach existing installs without their file
-going stale. Free tiers churn — see docs/translation-engines.md for signup
-details.
+The lineup is deliberately small: only free lanes that are actually usable
+without a paywall, a hard-to-get account, or a quota too small to matter.
+Others (z.ai, Cerebras, ModelScope, SambaNova, Scaleway, DeepL, OpenRouter,
+Mistral, DashScope, NVIDIA, Baidu) were dropped for one of those reasons; their
+``kind`` handlers remain in the code, so any of them can be re-added via config.
 """
 
 from typing import Any
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "providers": [
-        # z.ai — email signup; GLM flash is free with no token cap (~1 req/s).
+        # Microsoft Translator via Edge's keyless auth endpoint — no account,
+        # HTML-native, strong quality, fast. The workhorse keyless lane.
         {
-            "id": "zai",
+            "id": "bing",
+            "kind": "bing",
+            "requires_key": False,
+            "rps": 3,
+            "max_concurrency": 2,
+        },
+        # deepl.com/pro-api — NMT fallback for short strings; HTML-native.
+        {
+            "id": "deepl",
+            "kind": "deepl",
+            "monthly_chars": 500_000,
+        },
+        # Local OpenAI-compatible LLM server (Docker Model Runner, llama.cpp,
+        # Ollama, LM Studio etc.)
+        {
+            "id": "local-llm",
             "kind": "openai",
-            "base_url": "https://api.z.ai/api/paas/v4",
-            "rps": 1,
+            "base_url": "http://localhost:12434/engines/v1",
+            "requires_key": False,
             "max_concurrency": 1,
         },
-        # aistudio.google.com — Google account only; quotas volatile.
+        # aistudio.google.com — free, Google account only; ~1,500 req/day.
         {
             "id": "gemini",
             "kind": "openai",
@@ -33,23 +51,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "rpm": 10,
             "max_concurrency": 2,
         },
-        # cloud.cerebras.ai — free tier, ~1M tokens/day, very fast.
-        {
-            "id": "cerebras",
-            "kind": "openai",
-            "base_url": "https://api.cerebras.ai/v1",
-            "rpm": 5,
-            "max_concurrency": 1,
-        },
-        # console.mistral.ai — Experiment plan; phone verification, no card.
-        {
-            "id": "mistral",
-            "kind": "openai",
-            "base_url": "https://api.mistral.ai/v1",
-            "rpm": 2,
-            "max_concurrency": 1,
-        },
-        # console.groq.com — free, no card, strict token/day caps.
+        # console.groq.com — free, no card, very fast; small token/day cap, so
+        # it burns out quickly on long novels but is a good burst/short lane.
         {
             "id": "groq",
             "kind": "openai",
@@ -65,94 +68,39 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "rpm": 20,
             "max_concurrency": 1,
         },
-        # api-inference.modelscope.cn — Alibaba ModelScope; free after binding
-        # an Alibaba account (real-name verification), ~2,000 req/day (~500 per
-        # model). Qwen3.5 / DeepSeek / GLM family, strong on CJK.
+        # cloud.sambanova.ai — free API key, no card; very fast RDU inference.
+        # 50 req/day free, 1,000/day after a one-time $10 top-up.
         {
-            "id": "modelscope",
+            "id": "sambanova",
             "kind": "openai",
-            "base_url": "https://api-inference.modelscope.cn/v1",
-            "rpm": 60,
+            "base_url": "https://api.sambanova.ai/v1",
+            "rpm": 10,
+            "max_concurrency": 1,
+        },
+        # chutes.ai — no card; hosts open DeepSeek / Qwen / GLM weights, strong
+        # on CJK. OpenAI-compatible; free lineup varies.
+        {
+            "id": "chutes",
+            "kind": "openai",
+            "base_url": "https://llm.chutes.ai/v1",
+            "rpm": 30,
             "max_concurrency": 2,
-        },
-        # dashscope-intl.aliyuncs.com — Alibaba Model Studio (intl.); one-time
-        # ~1M tokens/model for 90 days. qwen-max/plus/turbo, OpenAI-compatible.
-        {
-            "id": "dashscope",
-            "kind": "openai",
-            "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-            "rpm": 20,
-            "max_concurrency": 1,
-        },
-        # integrate.api.nvidia.com — NVIDIA NIM; one-time request credits over
-        # 100+ hosted models. Good burst lane, not sustainable long-term.
-        {
-            "id": "nvidia",
-            "kind": "openai",
-            "base_url": "https://integrate.api.nvidia.com/v1",
-            "rpm": 40,
-            "max_concurrency": 1,
-        },
-        # deepl.com/pro-api — optional NMT fallback for short strings.
-        {
-            "id": "deepl",
-            "kind": "deepl",
-            "monthly_chars": 500_000,
-        },
-        # Microsoft Translator via Edge's keyless auth endpoint — no account,
-        # HTML-native, strong quality. Best-effort (unofficial) fallback lane.
-        {
-            "id": "bing",
-            "kind": "bing",
-            "requires_key": False,
-            "rps": 3,
-            "max_concurrency": 2,
-        },
-        # fanyi-api.baidu.com — free tier, strong on CJK. api_key is the pair
-        # 'app_id:secret_key'; the standard free tier allows ~1 request/second.
-        {
-            "id": "baidu",
-            "kind": "baidu",
-            "rps": 1,
-            "max_concurrency": 1,
-        },
-        # Built-in local NLLB (CTranslate2, CPU) — needs no key, so the
-        # service always has a working lane even with zero providers set up.
-        {
-            "id": "local-nllb",
-            "kind": "nllb",
         },
     ],
     "engines": [
-        {
-            "id": "zai-glm-flash",
-            "provider": "zai",
-            "model": "glm-4.7-flash",
-            "max_input_tokens": 200_000,
-        },
+        # "-latest" aliases track Google's current flash release, so they don't
+        # 404 when a version is retired (2.5-flash already is).
         {
             "id": "gemini-flash",
             "provider": "gemini",
-            "model": "gemini-2.5-flash",
+            "model": "gemini-flash-latest",
             "max_input_tokens": 250_000,
         },
         {
             "id": "gemini-flash-lite",
             "provider": "gemini",
-            "model": "gemini-2.5-flash-lite",
+            "model": "gemini-flash-lite-latest",
             "max_input_tokens": 250_000,
-        },
-        {
-            "id": "cerebras-glm",
-            "provider": "cerebras",
-            "model": "zai-glm-4.7",
-            "max_input_tokens": 30_000,
-        },
-        {
-            "id": "mistral-large",
-            "provider": "mistral",
-            "model": "mistral-large-latest",
-            "max_input_tokens": 100_000,
         },
         {
             "id": "groq-oss",
@@ -160,93 +108,50 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "model": "openai/gpt-oss-120b",
             "max_input_tokens": 8_000,
         },
+        # OpenRouter gpt-oss-120b via the :nitro (highest-throughput) route;
+        # needs an openrouter api key, so it's auto-disabled until one is set.
         {
-            "id": "groq-llama",
-            "provider": "groq",
-            "model": "llama-3.3-70b-versatile",
+            "id": "gpt-oss-120b:nitro",
+            "provider": "openrouter",
+            "model": "openai/gpt-oss-120b:nitro",
             "max_input_tokens": 8_000,
+            "chunk_tokens": 2_000,
         },
         {
-            "id": "or-nemotron",
-            "provider": "openrouter",
-            "model": "nvidia/nemotron-3-super-120b-a12b:free",
-            "max_input_tokens": 100_000,
+            "id": "bing",
+            "provider": "bing",
         },
+        # Disabled example: set `model` to one you've pulled, enable it, add it
+        # to a routing lane. Budgets are sized small for quantized local models;
+        # enable_thinking=false stops reasoning models burning the budget.
         {
-            "id": "or-qwen",
-            "provider": "openrouter",
-            "model": "qwen/qwen3.5-235b-a22b:free",
-            "max_input_tokens": 100_000,
-        },
-        {
-            "id": "modelscope-qwen",
-            "provider": "modelscope",
-            "model": "Qwen/Qwen3.5-235B-A22B",
-            "max_input_tokens": 100_000,
-        },
-        {
-            "id": "dashscope-qwen",
-            "provider": "dashscope",
-            "model": "qwen-plus",
-            "max_input_tokens": 100_000,
-        },
-        {
-            "id": "nvidia-qwen",
-            "provider": "nvidia",
-            "model": "qwen/qwen3.5-235b-a22b",
-            "max_input_tokens": 100_000,
-        },
-        {"id": "deepl", "provider": "deepl"},
-        {"id": "bing", "provider": "bing"},
-        {"id": "baidu", "provider": "baidu"},
-        # Meta's NLLB-200 (distilled 1.3B, int8) running in-process.
-        # ~1.4 GB download from Hugging Face on first use, then cached.
-        {
-            "id": "nllb",
-            "provider": "local-nllb",
-            "model": "OpenNMT/nllb-200-distilled-1.3B-ct2-int8",
+            "id": "qwen3.5-4B",
+            "provider": "local-llm",
+            "model": "docker.io/ai/qwen3.5:4B-UD-Q4_K_XL",
+            "enabled": False,
+            "max_input_tokens": 8_000,
+            "chunk_tokens": 2_000,
+            "extra_body": {
+                "chat_template_kwargs": {
+                    "enable_thinking": False,
+                },
+            },
         },
     ],
-    # Priority order among whichever engines have keys set. LLM lanes first
-    # (glossary + context). Then the keyless NMT lanes: DeepL, then Bing
-    # (keyless, HTML-native), then Baidu (CJK, needs a key); local NLLB is the
-    # final offline resort. Reorder freely in the dashboard.
+    # Priority order among whichever engines have keys set.
     "routing": {
         "chapter": [
-            "zai-glm-flash",
-            "gemini-flash",
-            "modelscope-qwen",
-            "cerebras-glm",
-            "dashscope-qwen",
-            "mistral-large",
-            "or-nemotron",
-            "or-qwen",
-            "nvidia-qwen",
-            "gemini-flash-lite",
-            "groq-oss",
-            "groq-llama",
-            "deepl",
             "bing",
-            "baidu",
-            "nllb",
+            "gemini-flash",
+            "gemini-flash-lite",
+            "gpt-oss-120b:nitro",
         ],
         "short_text": [
-            "zai-glm-flash",
-            "gemini-flash",
-            "deepl",
-            "modelscope-qwen",
-            "cerebras-glm",
-            "dashscope-qwen",
-            "mistral-large",
-            "or-nemotron",
-            "or-qwen",
-            "nvidia-qwen",
-            "gemini-flash-lite",
-            "groq-oss",
-            "groq-llama",
             "bing",
-            "baidu",
-            "nllb",
+            "groq-oss",
+            "gemini-flash",
+            "gemini-flash-lite",
+            "gpt-oss-120b:nitro",
         ],
     },
 }

@@ -10,14 +10,11 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "beautifulsoup4>=4.12",
-  "ctranslate2>=4.5",
   "fastapi[standard]>=0.115",
   "httpx>=0.27",
-  "huggingface-hub>=0.26",
   "lingua-language-detector>=2.0",
   "pydantic>=2.7",
   "pyyaml>=6.0",
-  "sentencepiece>=0.2",
 ]
 
 [dependency-groups]
@@ -63,5 +60,5 @@ strict = true
 files = ["translator"]
 
 [[tool.mypy.overrides]]
-module = ["bs4.*", "lingua.*", "ctranslate2.*", "sentencepiece.*"]
+module = ["bs4.*", "lingua.*"]
 ignore_missing_imports = true

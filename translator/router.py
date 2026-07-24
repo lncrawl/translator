@@ -95,6 +95,12 @@ class _EngineRuntime:
         return None
 
 
+def _pair_label(source_lang: str | None, target_lang: str) -> str:
+    """A human-readable direction for error messages, e.g. 'zh->en' or
+    'auto->en' when the source wasn't given or detected."""
+    return f"{source_lang or 'auto'}->{target_lang}"
+
+
 def _min_interval(config: ProviderConfig) -> float:
     if config.rps:
         return 1.0 / config.rps
@@ -169,7 +175,14 @@ class Router:
 
     # -- candidate selection ------------------------------------------------
 
-    def _candidates(self, task: TaskKind, override: str | None) -> list[_EngineRuntime]:
+    def _candidates(
+        self,
+        task: TaskKind,
+        override: str | None,
+        source_lang: str | None,
+        target_lang: str,
+    ) -> list[_EngineRuntime]:
+        pair = _pair_label(source_lang, target_lang)
         if override is not None:
             runtime = self._runtimes.get(override)
             if runtime is None:
@@ -184,6 +197,12 @@ class Router:
                     f"engine {override!r} is disabled"
                     " (disabled in config or missing api key)",
                 )
+            if not runtime.engine.supports(source_lang, target_lang):
+                raise ApiError(
+                    422,
+                    "unsupported_language_pair",
+                    f"engine {override!r} does not support {pair}",
+                )
             return [runtime]
         lane: list[str] = getattr(self._config.routing, task)
         runtimes = [r for r in (self._runtimes.get(i) for i in lane) if r is not None]
@@ -193,13 +212,23 @@ class Router:
                 "no_engines",
                 f"no enabled engines routed for task {task!r}",
             )
-        return runtimes
+        supported = [r for r in runtimes if r.engine.supports(source_lang, target_lang)]
+        if not supported:
+            raise ApiError(
+                422,
+                "unsupported_language_pair",
+                f"no enabled engine supports {pair}",
+            )
+        return supported
 
     async def _run(
         self,
         task: TaskKind,
         override: str | None,
         fn: Callable[[Engine], Awaitable[T]],
+        *,
+        source_lang: str | None,
+        target_lang: str,
     ) -> tuple[T, str]:
         """Try candidates in lane order; retry transient errors per engine.
 
@@ -210,7 +239,7 @@ class Router:
         errors bench the whole provider until its reset; repeated failures of
         any other kind bench the engine for a cooldown period.
         """
-        candidates = self._candidates(task, override)
+        candidates = self._candidates(task, override, source_lang, target_lang)
         blocked: list[_EngineRuntime] = []
         deferred: list[_EngineRuntime] = []
         last_error: EngineError | None = None
@@ -343,7 +372,13 @@ class Router:
                 context=request.context,
             )
 
-        translations, engine_id = await self._run("short_text", request.engine, fn)
+        translations, engine_id = await self._run(
+            "short_text",
+            request.engine,
+            fn,
+            source_lang=source_lang,
+            target_lang=request.target_lang,
+        )
         return TranslateTextResponse(
             translations=translations,
             detected_source_lang=detected,
@@ -414,7 +449,11 @@ class Router:
             return "".join(parts), new_terms, warnings
 
         (html, new_terms, warnings), engine_id = await self._run(
-            "chapter", request.engine, fn
+            "chapter",
+            request.engine,
+            fn,
+            source_lang=source_lang,
+            target_lang=request.target_lang,
         )
         return TranslateHtmlResponse(
             html=html,

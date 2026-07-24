@@ -35,6 +35,9 @@ class EngineCapabilities:
     html: HtmlSupport
     glossary: bool
     max_input_tokens: int | None = None
+    # Base ISO 639-1 languages the engine covers; None means unrestricted.
+    source_langs: list[str] | None = None
+    target_langs: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +92,14 @@ class Engine(abc.ABC):
     @property
     @abc.abstractmethod
     def capabilities(self) -> EngineCapabilities: ...
+
+    def supports(self, source_lang: str | None, target_lang: str) -> bool:
+        """Whether this engine can handle the pair, checked before dispatch so
+        the router can skip it and reject unsupported pairs early. Delegates to
+        the shared coverage logic keyed by kind + config allowlists."""
+        from ..languages import supports_pair
+
+        return supports_pair(self.config, source_lang, target_lang)
 
     @abc.abstractmethod
     async def translate_segments(

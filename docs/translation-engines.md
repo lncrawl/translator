@@ -26,7 +26,7 @@ Recommended tiers, all switchable via config:
 | **Quality pass** | **Gemini 3 Flash / 2.5 Flash** free tier | Free | 250–1,500 req/day/project (volatile) | Top quality among free options; quotas unstable since Dec 2025; free tier trains on data (except EU/UK/CH). |
 | **Parallel lanes** | **Cerebras** (`zai-glm-4.7`, 1M tok/day) · **Mistral** (~1B tok/mo, mid CJK quality) | Free | ~175/day · ~2,800/day | Good backup/burst lanes behind the same OpenAI-compatible client. |
 | **NMT fallback** | **DeepL API Free** | 500K chars/mo | ~83 chapters/mo | Best native HTML handling (`tag_handling=html`, tags unbilled) + free glossary for JA/KO/ZH→EN. Good for metadata/short texts. |
-| **Local fallback** | **NLLB-200 distilled 1.3B** int8 via CTranslate2, in-process (built-in default) | Free (own CPU) | 500+/day on a 4 vCPU / 8 GB box | Zero setup: no key, no sidecar; NMT-grade quality (below LLM lanes) but keeps the service always answering. A llama.cpp/Ollama server can be added as an `openai` provider for an instruction-following local lane. |
+| **Keyless default** | **Bing** (Microsoft Translator, Edge keyless endpoint) | Free (no key) | best-effort, unmetered | What actually ships as the zero-config default: HTML-native, fast, near-LLM quality on CJK→EN. For a private offline lane, a llama.cpp/Ollama server can be added as an `openai` provider (`local-llm`); an in-process CT2 lane (OPUS-MT/NLLB) is no longer bundled. |
 | **Nearly-free escape hatch** | **DeepSeek** paid API | **~$2–3 per 2,000-ch novel** | Fast | Community-#1 ZH→EN quality (COMET ~0.90). Cheapest quality-per-dollar anywhere. |
 
 Design implication: almost every engine above (Z.AI, Cerebras, Mistral,
@@ -114,7 +114,7 @@ Realistic decode speed on a shared 4-vCPU box: ~4–6 tok/s for 7–9B Q4,
 | **Tower-Plus-9B / 2B** | 5.8 / 1.7 GB | Tight / easy | ~115 / ~550 | ~17 / ~3.6 days | Covers ZH/JA/KO→EN, instruction-capable — but **CC-BY-NC-SA** (non-commercial). |
 | vntl-llama3-8b-v2 | ~4.9 GB | Yes | ~125 | ~16 days | JA→EN VN-tuned niche pick (~32B-level for that niche). |
 | Sugoi-14B-Ultra | ~9 GB | **No** | — | — | Best open JA→EN MTL; first grab after a RAM/GPU upgrade. |
-| NLLB / MADLAD (CT2) | <3 GB | Trivial | 500+ | <4 days | Sentence-level seq2seq, weakest literary quality here, no instructions — but zero-setup (in-process, no sidecar/key), which is why NLLB-1.3B ships as the built-in last-resort lane. |
+| OPUS-MT / NLLB / MADLAD (CT2) | <3 GB | Trivial | 500+ | <4 days | Sentence-level seq2seq, weakest literary quality here, no instructions. Once bundled in-process via CTranslate2, but **dropped** — quality was below the keyless Bing default while adding the ctranslate2/sentencepiece/hugging-face stack. Re-add as an out-of-process lane only if a fully-offline, no-API deployment needs it. |
 | Sakura/GalTransl models | — | — | — | — | JA→**ZH** only; wrong target language. |
 
 Notes:

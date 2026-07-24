@@ -87,7 +87,7 @@ function render() {
   });
   const kindSelect = dropdown({
     ariaLabel: "Provider kind",
-    options: ["openai", "deepl", "nllb", "bing", "baidu"].map((k) => ({
+    options: ["openai", "deepl", "bing", "baidu"].map((k) => ({
       value: k,
       label: k,
     })),

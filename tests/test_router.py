@@ -178,6 +178,44 @@ async def test_disabled_engine_override_rejected() -> None:
     assert excinfo.value.code == "engine_disabled"
 
 
+async def test_unsupported_lane_engine_is_skipped() -> None:
+    # 'a' only handles ja; a zh->en request skips it and lands on 'b'.
+    a = FakeEngine("a", source_langs=["ja"])
+    b = FakeEngine("b")
+    router = make_router(a, b)
+    resp = await router.translate_text(
+        TranslateTextRequest(texts=["你好"], source_lang="zh")
+    )
+    assert resp.engine == "b"
+    assert a.segment_calls == []  # never dispatched to the wrong-language engine
+
+
+async def test_no_engine_supports_pair_rejects_early() -> None:
+    a = FakeEngine("a", source_langs=["ja"])
+    b = FakeEngine("b", target_langs=["fr"])
+    router = make_router(a, b)
+    with pytest.raises(ApiError) as excinfo:
+        await router.translate_text(
+            TranslateTextRequest(texts=["你好"], source_lang="zh", target_lang="en")
+        )
+    assert excinfo.value.status_code == 422
+    assert excinfo.value.code == "unsupported_language_pair"
+    # Rejected before any engine was called.
+    assert a.segment_calls == []
+    assert b.segment_calls == []
+
+
+async def test_override_to_unsupported_engine_rejects() -> None:
+    a = FakeEngine("a", target_langs=["en"])
+    router = make_router(a)
+    with pytest.raises(ApiError) as excinfo:
+        await router.translate_text(
+            TranslateTextRequest(texts=["hi"], target_lang="fr", engine="a")
+        )
+    assert excinfo.value.status_code == 422
+    assert excinfo.value.code == "unsupported_language_pair"
+
+
 async def test_html_prompt_engine_passthrough() -> None:
     engine = FakeEngine("a", new_terms={"药老": "Yao Lao", "萧炎": "Xiao Yan"})
     router = make_router(engine)

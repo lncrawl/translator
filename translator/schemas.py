@@ -46,6 +46,9 @@ class EngineCapabilitiesInfo(BaseModel):
     html: HtmlSupportLiteral
     glossary: bool
     max_input_tokens: int | None = None
+    # Base ISO 639-1 languages the engine covers; null means unrestricted.
+    source_langs: list[str] | None = None
+    target_langs: list[str] | None = None
 
 
 class EngineInfo(BaseModel):

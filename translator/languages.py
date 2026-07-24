@@ -8,12 +8,16 @@ receive helpers instead of parsing tags themselves:
 - :func:`base` for routing, detection, and script checks,
 - :func:`display_name` for LLM prompts (models understand names, not codes),
 - :func:`deepl_source_lang` / :func:`deepl_target_lang` for DeepL's enums,
-- :func:`nllb_lang` for NLLB's FLORES-200 codes.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .config import ResolvedEngine
 
 _TAG = re.compile(r"^([a-zA-Z]{2})(?:-([a-zA-Z]{2}|[a-zA-Z]{4}))?$")
 
@@ -73,68 +77,6 @@ _DEEPL_TARGETS = {
 }
 
 
-# FLORES-200 codes used by NLLB models. Exact tag first, then base subtag;
-# unmapped languages are unsupported by the NLLB engine (it raises).
-_NLLB_CODES = {
-    "zh": "zho_Hans",
-    "zh-Hans": "zho_Hans",
-    "zh-Hant": "zho_Hant",
-    "ja": "jpn_Jpan",
-    "ko": "kor_Hang",
-    "en": "eng_Latn",
-    "pt": "por_Latn",
-    "es": "spa_Latn",
-    "fr": "fra_Latn",
-    "de": "deu_Latn",
-    "it": "ita_Latn",
-    "ru": "rus_Cyrl",
-    "id": "ind_Latn",
-    "vi": "vie_Latn",
-    "th": "tha_Thai",
-    "tr": "tur_Latn",
-    "ar": "arb_Arab",
-    "hi": "hin_Deva",
-    "pl": "pol_Latn",
-    "nl": "nld_Latn",
-    "uk": "ukr_Cyrl",
-    "bn": "ben_Beng",
-    "fa": "pes_Arab",
-    "sv": "swe_Latn",
-    "da": "dan_Latn",
-    "no": "nob_Latn",
-    "fi": "fin_Latn",
-    "cs": "ces_Latn",
-    "ro": "ron_Latn",
-    "hu": "hun_Latn",
-    "el": "ell_Grek",
-    "he": "heb_Hebr",
-    "bg": "bul_Cyrl",
-    "sk": "slk_Latn",
-    "hr": "hrv_Latn",
-    "sr": "srp_Cyrl",
-    "ms": "zsm_Latn",
-    "tl": "tgl_Latn",
-    "ur": "urd_Arab",
-    "ta": "tam_Taml",
-    "te": "tel_Telu",
-    "ml": "mal_Mlym",
-    "mr": "mar_Deva",
-    "ne": "npi_Deva",
-    "si": "sin_Sinh",
-    "my": "mya_Mymr",
-    "km": "khm_Khmr",
-    "lo": "lao_Laoo",
-    "mn": "khk_Cyrl",
-    "az": "azj_Latn",
-    "kk": "kaz_Cyrl",
-    "uz": "uzn_Latn",
-    "ka": "kat_Geor",
-    "sw": "swh_Latn",
-    "af": "afr_Latn",
-    "ca": "cat_Latn",
-}
-
-
 def canonicalize(tag: str) -> str:
     """Validate and normalize a BCP 47 tag; raises ValueError when invalid.
 
@@ -169,11 +111,6 @@ def display_name(tag: str | None) -> str:
 def deepl_source_lang(tag: str) -> str:
     """DeepL source languages carry no variant."""
     return base(tag).upper()
-
-
-def nllb_lang(tag: str) -> str | None:
-    """The FLORES-200 code NLLB expects, or None when unsupported."""
-    return _NLLB_CODES.get(tag) or _NLLB_CODES.get(base(tag))
 
 
 def deepl_target_lang(tag: str) -> str:
@@ -225,3 +162,46 @@ def bing_lang(tag: str) -> str:
 def baidu_lang(tag: str) -> str | None:
     """Baidu translate code, or None when Baidu doesn't support the tag."""
     return _BAIDU.get(tag) or _BAIDU.get(base(tag))
+
+
+def _allowed(tag: str | None, allow: list[str] | None) -> bool:
+    """Whether ``tag`` passes a config language allowlist (None = unrestricted).
+    An unknown language against a restricted list is not allowed."""
+    if allow is None:
+        return True
+    if tag is None:
+        return False
+    return base(tag) in {base(a) for a in allow}
+
+
+def supports_pair(engine: ResolvedEngine, source: str | None, target: str) -> bool:
+    """Whether ``engine`` can translate this pair, without dispatching.
+
+    Config allowlists (``source_langs``/``target_langs``) apply to every kind;
+    on top of them each kind's intrinsic coverage decides. LLM, DeepL and Bing
+    lanes are broad (they accept any pair and degrade gracefully); Baidu has a
+    finite catalog and rejects the rest early.
+    """
+    if not _allowed(source, engine.source_langs):
+        return False
+    if not _allowed(target, engine.target_langs):
+        return False
+    if engine.kind == "baidu":
+        # Baidu auto-detects the source; only the target is constrained.
+        return baidu_lang(target) is not None
+    return True
+
+
+def coverage_langs(
+    engine: ResolvedEngine,
+) -> tuple[list[str] | None, list[str] | None]:
+    """(source, target) base languages an engine covers, for the /engines
+    listing. ``None`` means unrestricted. Config allowlists win; otherwise the
+    kind's intrinsic catalog is described (LLM/DeepL/Bing stay unrestricted)."""
+
+    def _from_map(mapping: Mapping[str, str]) -> list[str]:
+        return sorted({base(tag) for tag in mapping})
+
+    if engine.kind == "baidu":
+        return engine.source_langs, engine.target_langs or _from_map(_BAIDU)
+    return engine.source_langs, engine.target_langs
