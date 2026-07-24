@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from helpers import FakeEngine, make_config
 
+from translator.errors import InvalidRequestError
 from translator.router import Router
 from translator.schemas import HtmlContext, TranslateTextRequest
 from translator.service import AbortedError, TranslatorService
@@ -66,6 +67,16 @@ def test_translate_html_and_detect() -> None:
         assert "[e1]" in response.html
         detections = service.detect(["안녕하세요 여러분, 만나서 반갑습니다"])
         assert detections[0].language == "ko"
+    finally:
+        service.close()
+
+
+def test_invalid_dict_payload_raises_invalid_request_error() -> None:
+    service = make_service(FakeEngine("e1"))
+    try:
+        # empty texts violates the schema's min_length constraint
+        with pytest.raises(InvalidRequestError):
+            service.translate_text({"texts": [], "target_lang": "en"})
     finally:
         service.close()
 

@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-24
+
+### Added
+
+- Public exception taxonomy under a common `TranslatorError` base, re-exported
+  from the top-level `translator` namespace: `TranslatorError`, `ApiError`,
+  `AbortedError`, and the new `InvalidRequestError`. Embedding hosts can now map
+  translator errors without importing pydantic or reaching into internal
+  modules. The sync `TranslatorService.translate_text`/`translate_html` methods
+  raise `InvalidRequestError` (instead of leaking pydantic's `ValidationError`)
+  when a dict payload fails validation.
+- `detect_code(text) -> str | None`: a free function returning the bare ISO
+  639-1 code (or `None` for `"und"`), for callers that only want the code. Stays
+  loop-free — it never constructs a `TranslatorService`.
+- The response models `TranslateTextResponse` / `TranslateHtmlResponse` are now
+  re-exported from the top-level `translator` namespace (for host typing).
+
+### Changed
+
+- `AbortedError` now subclasses `TranslatorError` rather than `RuntimeError`. It
+  remains importable from `translator.service` for backward compatibility.
+
 ## [0.1.3] - 2026-07-24
 
 ### Added

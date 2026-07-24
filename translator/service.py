@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from .config import AppConfig, load_config, resolve_config_path
 from .detect import Detection, detect_language
+from .errors import AbortedError, InvalidRequestError
 from .schemas import (
     TranslateHtmlRequest,
     TranslateHtmlResponse,
@@ -40,9 +41,23 @@ T = TypeVar("T")
 _POLL_SECONDS = 0.25
 _CLOSE_TIMEOUT = 10.0
 
+__all__ = ["AbortedError", "TranslatorService"]
 
-class AbortedError(RuntimeError):
-    """The call was cancelled via its abort signal or timed out."""
+M = TypeVar("M", TranslateTextRequest, TranslateHtmlRequest)
+
+
+def _validate(model: type[M], request: M | dict[str, Any]) -> M:
+    """Coerce a dict payload into a request model, mapping pydantic's
+    ``ValidationError`` to the package's own ``InvalidRequestError`` so callers
+    never import pydantic to handle bad input."""
+    if not isinstance(request, dict):
+        return request
+    from pydantic import ValidationError
+
+    try:
+        return model.model_validate(request)
+    except ValidationError as e:
+        raise InvalidRequestError(str(e), errors=e.errors()) from e
 
 
 class TranslatorService:
@@ -101,8 +116,7 @@ class TranslatorService:
         signal: threading.Event | None = None,
         timeout: float | None = None,
     ) -> TranslateTextResponse:
-        if isinstance(request, dict):
-            request = TranslateTextRequest.model_validate(request)
+        request = _validate(TranslateTextRequest, request)
         return self._call(self.store.router.translate_text(request), signal, timeout)
 
     def translate_html(
@@ -112,8 +126,7 @@ class TranslatorService:
         signal: threading.Event | None = None,
         timeout: float | None = None,
     ) -> TranslateHtmlResponse:
-        if isinstance(request, dict):
-            request = TranslateHtmlRequest.model_validate(request)
+        request = _validate(TranslateHtmlRequest, request)
         return self._call(self.store.router.translate_html(request), signal, timeout)
 
     def close(self) -> None:

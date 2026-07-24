@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from translator.detect import detect_language
+from translator.detect import detect_code, detect_language
 
 
 def test_chinese_prose() -> None:
@@ -49,3 +49,13 @@ def test_latin_text_quoting_hanzi_terms_is_not_chinese() -> None:
     # the statistical detector judges the dominant script instead.
     d = detect_language("The protagonist opened the 斗气大陆 map and smiled.")
     assert d.language == "en"
+
+
+def test_detect_code_returns_bare_code() -> None:
+    assert detect_code("He quietly entered the room and stared out the window.") == "en"
+    assert detect_code("그는 조용히 방으로 들어가 창밖을 바라보았다.") == "ko"
+
+
+def test_detect_code_is_none_when_unknown() -> None:
+    assert detect_code("   ") is None
+    assert detect_code("<p></p>") is None

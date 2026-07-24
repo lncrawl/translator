@@ -65,6 +65,17 @@ def _langdetect_detect(text: str) -> Detection:
     return Detection(code, round(float(best.prob), 4))
 
 
+def detect_code(text: str) -> str | None:
+    """The detected ISO 639-1 code for ``text``, or ``None`` when unknown.
+
+    A convenience over ``detect_language`` for callers that only want the code
+    and treat ``"und"`` as "no answer". Stays a free function (never a service
+    method) so it never constructs an event loop.
+    """
+    code = detect_language(text).language
+    return None if code == UNKNOWN.language else code
+
+
 def detect_language(text: str) -> Detection:
     plain = _strip_html(text)[:_MAX_CHARS].strip()
     if not plain:
