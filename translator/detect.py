@@ -1,8 +1,8 @@
-"""Local language detection: Unicode script heuristics + lingua fallback.
+"""Local language detection: Unicode script heuristics + langdetect fallback.
 
 No network calls and no engine quota. Hangul and kana identify Korean and
 Japanese near-perfectly; hanzi-only text (ambiguous between Chinese and a
-kanji-only Japanese title) and everything else goes through lingua.
+kanji-only Japanese title) and everything else goes through langdetect.
 """
 
 from __future__ import annotations
@@ -37,19 +37,28 @@ def _strip_html(text: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def _detector():  # type: ignore[no-untyped-def]
-    from lingua import LanguageDetectorBuilder
+def _detect_langs():  # type: ignore[no-untyped-def]
+    from langdetect import DetectorFactory, detect_langs
 
-    return LanguageDetectorBuilder.from_all_languages().with_low_accuracy_mode().build()
+    # langdetect is nondeterministic unless seeded.
+    DetectorFactory.seed = 0
+    return detect_langs
 
 
-def _lingua_detect(text: str) -> Detection:
-    values = _detector().compute_language_confidence_values(text)
+def _langdetect_detect(text: str) -> Detection:
+    from langdetect.lang_detect_exception import LangDetectException
+
+    try:
+        values = _detect_langs()(text)
+    except LangDetectException:
+        # Raised on featureless input (digits, punctuation, emoji).
+        return UNKNOWN
     if not values:
         return UNKNOWN
     best = values[0]
-    code = best.language.iso_code_639_1.name.lower()
-    return Detection(code, round(float(best.value), 4))
+    # langdetect reports regional variants (zh-cn, zh-tw); keep the base code.
+    code = str(best.lang).split("-")[0].lower()
+    return Detection(code, round(float(best.prob), 4))
 
 
 def detect_language(text: str) -> Detection:
@@ -74,4 +83,4 @@ def detect_language(text: str) -> Detection:
         if han > 0 and han >= hangul:
             return Detection("zh", min(0.95, 0.6 + 0.01 * han))
 
-    return _lingua_detect(plain)
+    return _langdetect_detect(plain)

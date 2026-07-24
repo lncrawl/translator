@@ -147,8 +147,8 @@ omitted (the result is echoed back as `detected_source_lang`). Two layers:
 1. **Script heuristics** — Unicode-range analysis separates hangul (ko),
    kana (ja), and hanzi-only text cheaply and near-perfectly for KO/JA;
    hanzi-only text is ambiguous between zh and ja.
-2. **Statistical detector** — a small local library (e.g. `lingua-py` in
-   low-accuracy mode or fastText `lid.176`) resolves ambiguous cases and
+2. **Statistical detector** — a small pure-Python local library
+   (`langdetect`, seeded for determinism) resolves ambiguous cases and
    covers non-CJK languages.
 
 No network call, no engine quota. HTML input is text-extracted first.
