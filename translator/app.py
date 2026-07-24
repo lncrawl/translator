@@ -15,7 +15,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Security
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBearer
+from fastapi.security import HTTPBasic, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import Headers
 from starlette.middleware.base import RequestResponseEndpoint
@@ -101,10 +101,13 @@ def create_app(
         if owned_store:
             await store.close()
 
-    # Declared, not enforced: adds the Authorize button and marks operations as
-    # secured in the schema so clients send a Bearer token; auto_error=False
-    # keeps standalone (no-proxy) use open.
-    dependencies = [Security(HTTPBearer(auto_error=False))] if auth else []
+    # Declared, not enforced: adds the Authorize button
+    dependencies = []
+    if auth:
+        dependencies += [
+            Security(HTTPBasic(auto_error=False)),
+            Security(HTTPBearer(auto_error=False)),
+        ]
 
     app = FastAPI(
         title="translator",
