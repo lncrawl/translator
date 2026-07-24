@@ -40,12 +40,17 @@ jobs:
       - name: Set version in pyproject.toml
         run: uv version "${{ steps.changelog.outputs.value }}"
 
-      - name: Commit and tag
+      - name: Commit version bump
         uses: EndBug/add-and-commit@v10
         with:
           add: "pyproject.toml uv.lock"
-          tag: "v${{ steps.changelog.outputs.value }}"
           message: "Bump version to v${{ steps.changelog.outputs.value }}"
+
+      - name: Create and push tag
+        run: |
+          version="${{ steps.changelog.outputs.value }}"
+          git tag "v$version"
+          git push origin "v$version"
 
       - name: Trigger release workflow
         run: |
