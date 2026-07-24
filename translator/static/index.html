@@ -3,14 +3,23 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>translator — dashboard</title>
+    <title>Translator — Dashboard</title>
     <script>
-      /* apply stored theme before first paint */
-      try {
-        const t = localStorage.getItem("theme");
-        if (t) document.documentElement.dataset.theme = t;
-      } catch {}
+      function getTheme() {
+        try {
+          const stored = localStorage.getItem("theme");
+          if (stored === "light" || stored === "dark") {
+            return stored;
+          }
+          const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+          return dark ? "dark" : "light";
+        } catch {
+          return "dark";
+        }
+      }
+      document.documentElement.dataset.theme = getTheme();
     </script>
+    <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="static/app.css" />
   </head>
   <body>
@@ -26,10 +35,16 @@
 
       <div class="content">
         <div class="topbar">
-          <button class="menu-btn" id="menu-btn" aria-label="Open menu">☰</button>
+          <button class="menu-btn" id="menu-btn" aria-label="Open menu">
+            ☰
+          </button>
           <h1 id="page-title">Dashboard</h1>
           <span id="health-badge" class="badge" aria-live="polite">…</span>
-          <button class="icon-btn" id="theme-btn" title="Theme" aria-label="Toggle theme">◐</button>
+          <button
+            class="icon-btn"
+            id="theme-btn"
+            aria-label="Toggle theme"
+          ></button>
         </div>
         <main id="views" tabindex="-1"></main>
       </div>

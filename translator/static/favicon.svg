@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    :root { color-scheme: light dark; }
+    .mark { fill: #000000; }
+    @media (prefers-color-scheme: dark) { .mark { fill: #ffffff; } }
+  </style>
+  <mask id="hole">
+    <rect x="1" y="1" width="30" height="30" fill="#fff" rx="9"/>
+    <circle cx="22" cy="22" r="5" fill="#000"/>
+  </mask>
+  <rect class="mark" x="1" y="1" width="30" height="30" rx="9" mask="url(#hole)"/>
+</svg>

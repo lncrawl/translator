@@ -96,7 +96,9 @@ export function onStore() {
       : "",
   );
 
-  const sorted = [...engines].sort((a, b) => {
+  const active = engines.filter((e) => e.status !== "disabled");
+  const hidden = engines.length - active.length;
+  const sorted = [...active].sort((a, b) => {
     const rank = (e) => (e.status === "ok" ? 0 : 1);
     return rank(a) - rank(b) || a.id.localeCompare(b.id);
   });
@@ -135,9 +137,29 @@ export function onStore() {
       ),
     ),
   );
+  const hiddenNote = hidden
+    ? el(
+        "p",
+        { class: "field-hint", style: "margin-top:10px" },
+        `${hidden} disabled engine${hidden === 1 ? "" : "s"} hidden — see the `,
+        el("a", { href: "#/engines" }, "Engines"),
+        " page.",
+      )
+    : null;
   enginesBox.replaceChildren(
-    engines.length
-      ? dataTable(["Engine", "Provider", "Model", "Status", "Slots"], rows)
-      : el("div", { class: "inline-note" }, "No engines configured."),
+    active.length
+      ? el(
+          "div",
+          {},
+          dataTable(["Engine", "Provider", "Model", "Status", "Slots"], rows),
+          hiddenNote,
+        )
+      : el(
+          "div",
+          { class: "inline-note" },
+          engines.length
+            ? "All configured engines are disabled — add an API key or enable one on the Engines page."
+            : "No engines configured.",
+        ),
   );
 }

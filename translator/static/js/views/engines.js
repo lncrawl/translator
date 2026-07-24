@@ -1,13 +1,13 @@
+import { keyState, liveEngine, mutate, store } from "../store.js";
 import {
-  el,
-  toast,
   busy,
-  statusPill,
-  routeParts,
-  dropdown,
   confirmDialog,
+  dropdown,
+  el,
+  routeParts,
+  statusPill,
+  toast,
 } from "../ui.js";
-import { store, mutate, liveEngine, keyState } from "../store.js";
 
 export const id = "engines";
 export const title = "Engines";
@@ -32,35 +32,35 @@ export function mount(root) {
   root.append(
     el(
       "div",
-      { class: "page-actions" },
-      filterSelect.root,
+      { class: "spread" },
       el(
-        "button",
-        {
-          class: "primary",
-          onclick: () => {
-            if (!store.config?.providers.length) {
-              toast("Create a provider first", "error");
-              return;
-            }
-            location.hash = filterProvider
-              ? `#/engine-edit?provider=${encodeURIComponent(filterProvider)}`
-              : "#/engine-edit";
-          },
-        },
-        "Add engine",
-      ),
-    ),
-    el(
-      "div",
-      { class: "card" },
-      el(
-        "p",
-        { class: "hint" },
+        "div",
+        { class: "hint", style: "flex:1" },
         "One model on one provider — what the routing lanes reference. Status combines config, key presence, cooldowns, and quota state.",
       ),
-      tableBox,
+      el(
+        "div",
+        { class: "page-actions", style: "flex-shrink: 0" },
+        filterSelect.root,
+        el(
+          "button",
+          {
+            class: "primary",
+            onclick: () => {
+              if (!store.config?.providers.length) {
+                toast("Create a provider first", "error");
+                return;
+              }
+              location.hash = filterProvider
+                ? `#/engine-edit?provider=${encodeURIComponent(filterProvider)}`
+                : "#/engine-edit";
+            },
+          },
+          "Add engine",
+        ),
+      ),
     ),
+    tableBox,
   );
 }
 

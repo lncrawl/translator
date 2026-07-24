@@ -1,5 +1,5 @@
-import { el, toast, busy, confirmDialog } from "../ui.js";
-import { store, mutate, keyState } from "../store.js";
+import { keyState, mutate, store } from "../store.js";
+import { busy, confirmDialog, el, toast } from "../ui.js";
 
 export const id = "providers";
 export const title = "Providers";
@@ -12,26 +12,26 @@ export function mount(root) {
   root.append(
     el(
       "div",
-      { class: "page-actions" },
+      { class: "spread" },
       el(
-        "button",
-        {
-          class: "primary",
-          onclick: () => (location.hash = "#/provider-edit"),
-        },
-        "Add provider",
-      ),
-    ),
-    el(
-      "div",
-      { class: "card" },
-      el(
-        "p",
-        { class: "hint" },
+        "div",
+        { class: "hint", style: "flex:1" },
         "An API account: base URL, API key, and account-wide rate limits shared by all of its engines. Engines stay disabled until their provider's key is set.",
       ),
-      cardsBox,
+      el(
+        "div",
+        { class: "page-actions", style: "flex-shrink: 0" },
+        el(
+          "button",
+          {
+            class: "primary",
+            onclick: () => (location.hash = "#/provider-edit"),
+          },
+          "Add provider",
+        ),
+      ),
     ),
+    cardsBox,
   );
 }
 

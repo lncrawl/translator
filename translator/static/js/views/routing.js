@@ -1,5 +1,5 @@
-import { el, toast, busy, dropdown } from "../ui.js";
-import { store, mutate, inactiveEngineIds } from "../store.js";
+import { inactiveEngineIds, mutate, store } from "../store.js";
+import { busy, dropdown, el, toast } from "../ui.js";
 
 export const id = "routing";
 export const title = "Routing lanes";
@@ -44,16 +44,12 @@ export function mount(root) {
   dirtyNote = el("span", { class: "meta" });
   root.append(
     el(
-      "div",
-      { class: "card" },
-      el(
-        "p",
-        { class: "hint" },
-        "Priority order per request type — drag to reorder; the router walks the lane and uses the first engine that is enabled, keyed, and not cooling down. Engines without a working key are hidden but keep their slot.",
-      ),
-      lanesBox,
-      el("div", { class: "actions" }, saveBtn, discardBtn, dirtyNote),
+      "p",
+      { class: "hint" },
+      "Priority order per request type — drag to reorder; the router walks the lane and uses the first engine that is enabled, keyed, and not cooling down. Engines without a working key are hidden but keep their slot.",
     ),
+    lanesBox,
+    el("div", { class: "actions" }, saveBtn, discardBtn, dirtyNote),
   );
 }
 

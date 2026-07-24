@@ -25,13 +25,13 @@ export function mount(root) {
 
   root.append(
     el(
+      "p",
+      { class: "hint" },
+      "Retry, fallback, and cooldown behavior of the router.",
+    ),
+    el(
       "div",
       { class: "card" },
-      el(
-        "p",
-        { class: "hint" },
-        "Retry, fallback, and cooldown behavior of the router.",
-      ),
       el(
         "div",
         { class: "policy-grid" },
@@ -56,29 +56,29 @@ export function mount(root) {
           "How long an engine stays out of rotation after hitting the failure threshold, before the router tries it again.",
         ),
       ),
+    ),
+    el(
+      "div",
+      { class: "actions" },
       el(
-        "div",
-        { class: "actions" },
-        el(
-          "button",
-          {
-            class: "primary",
-            onclick: (event) =>
-              busy(event.target, async () => {
-                await mutate("/config/failure-policy", {
-                  method: "PUT",
-                  body: {
-                    transient_retries: Number(fields.retries.value),
-                    backoff_base_seconds: Number(fields.backoff.value),
-                    failure_threshold: Number(fields.threshold.value),
-                    cooldown_seconds: Number(fields.cooldown.value),
-                  },
-                });
-                toast("Failure policy saved");
-              }),
-          },
-          "Save failure policy",
-        ),
+        "button",
+        {
+          class: "primary",
+          onclick: (event) =>
+            busy(event.target, async () => {
+              await mutate("/config/failure-policy", {
+                method: "PUT",
+                body: {
+                  transient_retries: Number(fields.retries.value),
+                  backoff_base_seconds: Number(fields.backoff.value),
+                  failure_threshold: Number(fields.threshold.value),
+                  cooldown_seconds: Number(fields.cooldown.value),
+                },
+              });
+              toast("Failure policy saved");
+            }),
+        },
+        "Save failure policy",
       ),
     ),
   );

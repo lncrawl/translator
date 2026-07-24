@@ -176,24 +176,32 @@ function renderHealth() {
     badge.className = "badge warn";
     badge.textContent = "unconfigured";
   }
-  if (health.version) $("#version").textContent = "v" + health.version;
+  if (health.version) {
+    $("#version").textContent = "v" + health.version;
+  }
 }
 
-/* Theme: auto -> light -> dark */
-const THEME_ICONS = { "": "◐", light: "☀", dark: "☾" };
-let theme = localStorage.getItem("theme") || "";
+/* Theme: 2-state light <-> dark. No stored choice falls back to the OS
+   preference; toggling always resolves to an explicit theme and persists it. */
+const systemDark = () => matchMedia("(prefers-color-scheme: dark)").matches;
+let theme =
+  localStorage.getItem("theme") === "light" ||
+  localStorage.getItem("theme") === "dark"
+    ? localStorage.getItem("theme")
+    : systemDark()
+      ? "dark"
+      : "light";
 
 function applyTheme() {
-  if (theme) document.documentElement.dataset.theme = theme;
-  else delete document.documentElement.dataset.theme;
+  document.documentElement.dataset.theme = theme;
   const btn = $("#theme-btn");
-  btn.textContent = THEME_ICONS[theme];
-  btn.title = `Theme: ${theme || "auto"}`;
+  const next = theme === "dark" ? "light" : "dark";
+  btn.replaceChildren(icon(theme === "dark" ? "moon" : "sun", 16));
+  btn.title = `Switch to ${next} theme`;
 }
 $("#theme-btn").addEventListener("click", () => {
-  theme = theme === "" ? "light" : theme === "light" ? "dark" : "";
-  if (theme) localStorage.setItem("theme", theme);
-  else localStorage.removeItem("theme");
+  theme = theme === "dark" ? "light" : "dark";
+  localStorage.setItem("theme", theme);
   applyTheme();
 });
 applyTheme();
