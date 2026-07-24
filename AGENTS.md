@@ -49,7 +49,7 @@ bar). English → other languages must work but quality is best-effort.
   fixtures in `tests/fixtures/{zh,ja,ko}.html`.
 - `docs/` — engine research, service design, deployment guide.
 - `translator/defaults.py` — built-in defaults (all known free lanes). The
-  optional `config.yml` is a sparse *overlay* on these, merged by id on load;
+  optional `config.yml` is a sparse _overlay_ on these, merged by id on load;
   see the deployment guide's "sparse overlay" section.
 
 ## Commands
@@ -85,6 +85,15 @@ Tasks are defined with poethepoet in `pyproject.toml` (`uv run poe <task>`):
   `Co-Authored-By` trailer).
 - Confirm before large refactors, deletions, or anything hard to reverse.
 - Ask before critical design decisions instead of guessing.
+
+## Releasing
+
+Releases are automated: bump -> tag -> GitHub Release (artifacts + changelog
+notes) -> PyPI publish; the same tag also builds versioned Docker images.
+Add a `## [x.y.z] - YYYY-MM-DD` section to `CHANGELOG.md` (its top entry is
+the version of record), push to main, then run the **Bump Version** workflow —
+it sets the version in `pyproject.toml`, commits, tags `vx.y.z`, and triggers
+the release pipeline. Pushing a `v*` tag by hand triggers the same release.
 
 ## Related repository
 
