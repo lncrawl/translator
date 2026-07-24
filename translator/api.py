@@ -31,19 +31,23 @@ from .schemas import (
     TranslateTextRequest,
     TranslateTextResponse,
 )
+from .state import ConfigStore
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
 
 
+def _store(request: Request) -> ConfigStore:
+    store: ConfigStore = request.app.state.store
+    return store
+
+
 def _config(request: Request) -> AppConfig:
-    config: AppConfig = request.app.state.store.config
-    return config
+    return _store(request).config
 
 
 def _router(request: Request) -> Router:
-    engine_router: Router = request.app.state.store.router
-    return engine_router
+    return _store(request).router
 
 
 health_router = APIRouter()
@@ -124,11 +128,13 @@ def detect(payload: DetectRequest) -> DetectResponse:
 async def translate_text(
     payload: TranslateTextRequest, request: Request
 ) -> TranslateTextResponse:
-    return await _router(request).translate_text(payload)
+    store = _store(request)
+    return await store.run(store.router.translate_text(payload))
 
 
 @router.post("/translate/html", tags=["translation"])
 async def translate_html(
     payload: TranslateHtmlRequest, request: Request
 ) -> TranslateHtmlResponse:
-    return await _router(request).translate_html(payload)
+    store = _store(request)
+    return await store.run(store.router.translate_html(payload))

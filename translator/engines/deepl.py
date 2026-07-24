@@ -9,7 +9,7 @@ a glossary is provided.
 from __future__ import annotations
 
 import calendar
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -26,6 +26,8 @@ from .base import (
     HtmlResult,
     HtmlSupport,
 )
+
+UTC = timezone.utc
 
 _FREE_BASE_URL = "https://api-free.deepl.com"
 _PRO_BASE_URL = "https://api.deepl.com"

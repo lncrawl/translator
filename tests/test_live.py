@@ -9,13 +9,15 @@ API key env var is set. Every enabled engine is exercised with one short-text
 call and one small HTML call — this costs a trivial amount of quota.
 """
 
+from __future__ import annotations
+
 import os
 
 import pytest
 
 from translator.config import load_config
-from translator.main import build_router
 from translator.schemas import TranslateHtmlRequest, TranslateTextRequest
+from translator.state import build_router
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("LIVE_ENGINE_TEST") != "1",

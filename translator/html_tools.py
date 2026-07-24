@@ -110,7 +110,7 @@ async def translate_html_via_segments(
             " text nodes",
             ErrorKind.TRANSIENT,
         )
-    for node, text in zip(nodes, translated, strict=True):
+    for node, text in zip(nodes, translated):
         node.replace_with(text)
     return HtmlResult(
         html=str(soup),

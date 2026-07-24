@@ -1,5 +1,7 @@
 """End-to-end checks against realistic chapter fixtures."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest
@@ -7,10 +9,10 @@ from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 from helpers import FakeEngine, make_config
 
+from translator.app import create_app
 from translator.detect import detect_language
 from translator.engines.base import HtmlSupport
 from translator.html_tools import chunk_html, extract_segments, tag_names
-from translator.main import create_app
 from translator.router import Router
 
 FIXTURES = Path(__file__).parent / "fixtures"

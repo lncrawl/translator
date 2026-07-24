@@ -157,5 +157,5 @@ class BaiduEngine(Engine):
                 f"{self.id}: expected {len(batch)} lines, got {len(translated)}",
                 ErrorKind.TRANSIENT,
             )
-        for (index, _), dst in zip(batch, translated, strict=True):
+        for (index, _), dst in zip(batch, translated):
             results[index] = dst

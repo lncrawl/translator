@@ -9,13 +9,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any, TypeVar
 
 from .config import AppConfig, save_config
 from .engines import build_engine, is_available
 from .router import Router
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 def build_router(config: AppConfig) -> Router:
@@ -48,11 +52,25 @@ class ConfigStore:
         self.config = config
         self.router = router
         self._path = path
-        self._lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None
+        self.loop: asyncio.AbstractEventLoop | None = None
         self._retired: set[asyncio.Task[None]] = set()
+
+    async def run(self, coro: Coroutine[Any, Any, T]) -> T:
+        """Await ``coro`` on the store's dedicated loop when one is set and
+        differs from the current one; otherwise inline."""
+        if self.loop is None or self.loop is asyncio.get_running_loop():
+            return await coro
+        future = asyncio.run_coroutine_threadsafe(coro, self.loop)
+        return await asyncio.wrap_future(future)
 
     async def apply(self, new_config: AppConfig) -> None:
         """Swap in ``new_config`` atomically and persist it."""
+        await self.run(self._apply(new_config))
+
+    async def _apply(self, new_config: AppConfig) -> None:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
         async with self._lock:
             new_router = build_router(new_config)
             old_router = self.router

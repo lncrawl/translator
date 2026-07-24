@@ -7,7 +7,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal, TypeVar
 
 from .config import AppConfig, ProviderConfig
@@ -26,6 +26,8 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
+UTC = timezone.utc
+
 TaskKind = Literal["chapter", "short_text"]
 
 _DEFAULT_QUOTA_RESET_SECONDS = 3600
@@ -43,12 +45,27 @@ class _ProviderRuntime:
     queues, and exhausts quota together."""
 
     config: ProviderConfig
-    semaphore: asyncio.Semaphore
     min_interval: float
-    rate_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     next_allowed: float = 0.0
     quota_resets_at: datetime | None = None
     active_requests: int = 0
+    # asyncio primitives are created on first use so they bind to the loop
+    # that actually runs the router: Python 3.9 binds them at construction,
+    # and the embedded service builds runtimes outside its router loop.
+    _semaphore: asyncio.Semaphore | None = field(default=None, repr=False)
+    _rate_lock: asyncio.Lock | None = field(default=None, repr=False)
+
+    @property
+    def semaphore(self) -> asyncio.Semaphore:
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self.config.max_concurrency)
+        return self._semaphore
+
+    @property
+    def rate_lock(self) -> asyncio.Lock:
+        if self._rate_lock is None:
+            self._rate_lock = asyncio.Lock()
+        return self._rate_lock
 
     def quota_blocked(self, now: datetime) -> bool:
         return self.quota_resets_at is not None and now < self.quota_resets_at
@@ -141,7 +158,6 @@ class Router:
             if provider is None:
                 provider = _ProviderRuntime(
                     config=provider_config,
-                    semaphore=asyncio.Semaphore(provider_config.max_concurrency),
                     min_interval=_min_interval(provider_config),
                 )
                 self._providers[provider_config.id] = provider

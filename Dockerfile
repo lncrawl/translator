@@ -5,12 +5,12 @@ WORKDIR /app
 # Dependency layer: cached until pyproject/lock change.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-dev
+    uv sync --frozen --no-install-project --no-dev --extra server
 
 COPY README.md ./
 COPY translator ./translator
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --extra server
 
 FROM python:3.12-slim-bookworm
 RUN useradd --create-home app && mkdir /data && chown app:app /data

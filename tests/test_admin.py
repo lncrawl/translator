@@ -1,13 +1,15 @@
 """Runtime config API: CRUD, atomic apply, and YAML persistence."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from translator.app import create_app
 from translator.config import AppConfig
-from translator.main import create_app
 
 BASE_CONFIG = {
     "providers": [

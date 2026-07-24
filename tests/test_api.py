@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import pytest
 from fastapi.testclient import TestClient
 from helpers import FakeEngine, make_config
 
+from translator.app import create_app
 from translator.config import AppConfig
 from translator.engines.base import EngineError, ErrorKind
-from translator.main import create_app
 from translator.router import Router
 
 # "llm" requires a key that is not set; "local" declares it needs none.

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass, field
-from enum import StrEnum
 
+from .._compat import StrEnum
 from ..config import ResolvedEngine
 from ..schemas import HtmlContext
 

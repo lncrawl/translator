@@ -1,8 +1,9 @@
-# translator
+# lncrawl-translator
 
-A Docker service that translates entire lightnovels/webnovels — metadata
-(titles, author, synopsis, tags) and HTML chapter content — with a focus on
-Chinese / Korean / Japanese → English.
+A web-novel translation service — metadata (titles, author, synopsis, tags)
+and HTML chapter content — with a focus on Chinese / Korean / Japanese →
+English. Runs standalone (Docker/uvicorn) or embedded as a Python library
+inside a host application.
 
 Built as a stateless translation API for
 [lightnovel-crawler](https://github.com/dipu-bd/lightnovel-crawler), with
@@ -44,6 +45,43 @@ for the engine research.
 
 The API is unauthenticated by design — run it on localhost or a private
 network only (see [docs/deployment.md](docs/deployment.md)).
+
+## Use as a library
+
+Install the package (`pip install lncrawl-translator`; Python 3.9+) and use
+the embedded service — a thread-safe, synchronous facade that runs the same
+engine router on its own event loop:
+
+```python
+from translator import TranslatorService
+
+service = TranslatorService(config_path="translator.yml")
+
+service.detect(["どこから来ましたか"])                # local, no quota
+response = service.translate_text({
+    "texts": ["少年は勇者になった"],
+    "target_lang": "en",
+    "glossary": {"勇者": "Hero"},
+})
+print(response.translations, response.engine, response.new_terms)
+
+service.close()  # on shutdown
+```
+
+`translate_text`/`translate_html` accept an optional `signal`
+(`threading.Event`) for cooperative cancellation and a `timeout` in seconds.
+
+The dashboard and HTTP API can be mounted into a host ASGI app, sharing the
+service's live config — edits made in the dashboard apply to the embedded
+service immediately:
+
+```python
+app.mount("/translator", service.create_app())
+```
+
+The mounted app carries no authentication (same as the standalone server) —
+the host must gate access itself. Language detection is also available
+without a service: `from translator import detect_language`.
 
 ## Development
 
