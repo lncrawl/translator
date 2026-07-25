@@ -120,7 +120,10 @@ Tasks are defined with poethepoet in `pyproject.toml` (`uv run poe <task>`):
 
 ## Conventions
 
-- Python ≥ 3.12, managed with **uv** (`uv sync`, `uv run …`).
+- Python ≥ 3.9, managed with **uv** (`uv sync`, `uv run …`). The floor is
+  deliberate — embedding hosts pin old interpreters — and it costs
+  `_compat.StrEnum`, the `eval-type-backport` dependency, and the lazily
+  created asyncio primitives in `core/limits.py`. Keep them.
 - **FastAPI** for the HTTP layer (matches lncrawl's stack).
 - Lint/format with **ruff** (`uv run ruff check .`, `uv run ruff format .`).
 - Type-check before declaring work complete.
