@@ -7,7 +7,6 @@ import {
   goBack,
   dropdown,
 } from "../ui.js";
-import { icon } from "../icons.js";
 import { store, mutate, SECRET_PLACEHOLDER } from "../store.js";
 
 export const id = "provider-edit";
@@ -133,8 +132,9 @@ function render() {
   // Credentials are declared per kind by the backend (/credential-schema) and
   // rendered dynamically. Secrets are write-only: the server never returns a
   // stored value (only a placeholder), so saved secret inputs start empty —
-  // leave blank to keep, type to replace, or hit Remove to clear. The eye
-  // toggle only reveals what is being typed right now.
+  // leave blank to keep, type to replace, or hit Remove to clear. Plain text
+  // inputs, not masked: the box only ever holds what the user just typed, so
+  // masking would hide their own input without protecting anything stored.
   const reqKeyRow = el(
     "label",
     { class: "field" },
@@ -156,34 +156,6 @@ function render() {
     return provider.options?.[key] || "";
   }
 
-  function secretControl(input, clearBtn) {
-    const button = el(
-      "button",
-      {
-        type: "button",
-        class: "ghost small",
-        "aria-label": "Show value",
-        onclick: () => {
-          const reveal = input.type === "password";
-          input.type = reveal ? "text" : "password";
-          button.replaceChildren(icon(reveal ? "eye-off" : "eye", 16));
-          button.setAttribute(
-            "aria-label",
-            reveal ? "Hide value" : "Show value",
-          );
-        },
-      },
-      icon("eye", 16),
-    );
-    return el(
-      "div",
-      { style: "display:flex;gap:6px;align-items:center" },
-      input,
-      button,
-      clearBtn || null,
-    );
-  }
-
   function renderCreds() {
     const fields = schemaFields();
     reqKeyRow.style.display = fields.length ? "" : "none";
@@ -199,29 +171,19 @@ function render() {
         const entry = { secret: f.secret, saved, cleared: false };
         const keepHint = "saved — leave blank to keep";
         const input = el("input", {
-          type: f.secret ? "password" : "text",
+          type: "text",
           // Secrets are never prefilled — the server only sends a placeholder.
           value: f.secret ? "" : stored,
           autocomplete: "off",
           placeholder: f.secret ? (saved ? keepHint : "paste token") : "",
-          style: "flex:1;min-width:0",
+          // Shrink to share the row with the Remove button.
+          style: saved ? "flex:1;min-width:0" : null,
           oninput: () => {
             if (entry.cleared && input.value) setCleared(false);
           },
         });
         entry.input = input;
         credInputs[f.key] = entry;
-        if (!f.secret) {
-          return el(
-            "label",
-            { class: "field" },
-            el("span", {}, f.label),
-            input,
-            f.description
-              ? el("small", { class: "hint" }, f.description)
-              : null,
-          );
-        }
         const clearBtn = saved
           ? el(
               "button",
@@ -236,13 +198,20 @@ function render() {
         function setCleared(on) {
           entry.cleared = on;
           input.placeholder = on ? "will be removed on save" : keepHint;
-          if (clearBtn) clearBtn.textContent = on ? "Keep" : "Remove";
+          clearBtn.textContent = on ? "Keep" : "Remove";
         }
         return el(
           "label",
           { class: "field" },
           el("span", {}, f.label),
-          secretControl(input, clearBtn),
+          clearBtn
+            ? el(
+                "div",
+                { style: "display:flex;gap:6px;align-items:center" },
+                input,
+                clearBtn,
+              )
+            : input,
           f.description ? el("small", { class: "hint" }, f.description) : null,
         );
       }),
