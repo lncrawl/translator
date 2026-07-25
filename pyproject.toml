@@ -13,6 +13,32 @@ license-files = ["LICENSE"]
 authors = [
   { name = "Lightnovel Crawler", email = "lncrawl@pm.me" },
 ]
+keywords = ["translation", "webnovel", "lightnovel", "llm", "fastapi"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Web Environment",
+  "Framework :: FastAPI",
+  "Intended Audience :: Developers",
+  "Intended Audience :: End Users/Desktop",
+  "Natural Language :: Chinese (Simplified)",
+  "Natural Language :: Chinese (Traditional)",
+  "Natural Language :: English",
+  "Natural Language :: Japanese",
+  "Natural Language :: Korean",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Text Processing :: Linguistic",
+  "Typing :: Typed",
+]
 dependencies = [
   "beautifulsoup4>=4.12",
   "fastapi>=0.115",
