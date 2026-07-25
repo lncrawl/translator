@@ -1373,7 +1373,9 @@ a.facts:hover {
   font: inherit;
   font-size: 12.5px;
   font-weight: 500;
-  padding: 5px 12px;
+  /* 2px here + the track's 2px padding and 1px border matches button.small's
+     4px + 1px exactly, so a seg sitting next to one lines up. */
+  padding: 2px 12px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;

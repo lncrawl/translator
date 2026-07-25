@@ -122,16 +122,24 @@ export function mount(root) {
   const resultsMeta = el("span", { class: "meta" });
   const warnings = el("div");
   const newTerms = el("div");
-  const frameSource = el("iframe", {
-    class: "preview-frame",
-    sandbox: "",
-    title: "Source chapter preview",
-  });
-  const frameTarget = el("iframe", {
-    class: "preview-frame",
-    sandbox: "",
-    title: "Translated chapter preview",
-  });
+  // One srcdoc assignment per iframe element, always before it is inserted:
+  // re-assigning it on a live frame queues a second navigation that can lose
+  // the race with the first, and assigning it inside a display:none subtree
+  // has no browsing context to load into. Each run gets fresh frames instead.
+  function previewFrame(title, html = "") {
+    const frame = el("iframe", { class: "preview-frame", sandbox: "", title });
+    frame.srcdoc = FRAME_STYLE + html;
+    return frame;
+  }
+
+  function swapFrame(current, html) {
+    const frame = previewFrame(current.title, html);
+    current.replaceWith(frame);
+    return frame;
+  }
+
+  let frameSource = previewFrame("Source chapter preview");
+  let frameTarget = previewFrame("Translated chapter preview");
   const rawPre = el("pre");
   const rendered = el(
     "div",
@@ -196,6 +204,19 @@ export function mount(root) {
     newTerms,
   );
 
+  // Cleared, not just hidden: a new run must never leave the previous
+  // chapter's translation behind — including in the Copy button's buffer.
+  function resetResults() {
+    resultsCard.style.display = "none";
+    resultsMeta.textContent = "";
+    warnings.replaceChildren();
+    newTerms.replaceChildren();
+    frameSource = swapFrame(frameSource, "");
+    frameTarget = swapFrame(frameTarget, "");
+    rawPre.textContent = "";
+    lastHtml = "";
+  }
+
   function loadSample(key) {
     const sample = SAMPLES[key];
     f.input.value = sample.html;
@@ -204,7 +225,7 @@ export function mount(root) {
     f.synopsis.value = sample.synopsis;
     glossary.set(sample.glossary);
     f.input.dispatchEvent(new Event("input"));
-    resultsCard.style.display = "none";
+    resetResults();
   }
 
   async function translate() {
@@ -213,6 +234,7 @@ export function mount(root) {
       toast("Enter some chapter HTML", "error");
       return;
     }
+    resetResults();
     const body = {
       html,
       target_lang: f.target.value || "en",
@@ -248,9 +270,10 @@ export function mount(root) {
         ),
       ),
     );
-    newTerms.replaceChildren(newTermsBlock(result.new_terms, glossary) || "");
-    frameSource.srcdoc = FRAME_STYLE + html;
-    frameTarget.srcdoc = FRAME_STYLE + result.html;
+    const termsBlock = newTermsBlock(result.new_terms, glossary);
+    if (termsBlock) newTerms.append(termsBlock);
+    frameSource = swapFrame(frameSource, html);
+    frameTarget = swapFrame(frameTarget, result.html);
     rawPre.textContent = result.html;
     resultsCard.style.display = "";
     resultsCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -303,6 +326,7 @@ export function mount(root) {
               onclick: () => {
                 f.input.value = "";
                 f.input.dispatchEvent(new Event("input"));
+                resetResults();
               },
             },
             "Clear",

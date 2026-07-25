@@ -100,12 +100,22 @@ export function mount(root) {
     copyText(lastTranslations.join("\n"), "Copied all translations");
   }
 
+  // A new run clears the previous table first, so a failed or slow run never
+  // leaves the last translation on screen looking like this one's result.
+  function resetResults() {
+    resultsCard.style.display = "none";
+    resultsMeta.textContent = "";
+    resultsBody.replaceChildren();
+    lastTranslations = [];
+  }
+
   async function translate() {
     const texts = textLines();
     if (!texts.length) {
       toast("Enter at least one line of text", "error");
       return;
     }
+    resetResults();
     const body = { texts, target_lang: f.target.value || "en" };
     if (f.source.value) body.source_lang = f.source.value;
     if (f.context.value.trim()) body.context = f.context.value.trim();

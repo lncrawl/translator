@@ -18,7 +18,8 @@ export function el(tag, attrs = {}, ...children) {
 }
 
 export function toast(message, kind = "success") {
-  const glyph = kind === "error" ? "✕ " : "✓ ";
+  // Not "✕": next to a message in a floating box it reads as a dismiss button.
+  const glyph = kind === "error" ? "⚠ " : "✓ ";
   const node = el("div", { class: `toast ${kind}` }, glyph + message);
   $("#toast").append(node);
   setTimeout(() => node.remove(), kind === "error" ? 7000 : 3500);

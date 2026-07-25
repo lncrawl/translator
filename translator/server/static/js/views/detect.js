@@ -18,6 +18,7 @@ export function mount(root) {
       toast("Enter at least one line of text", "error");
       return;
     }
+    results.replaceChildren(); // a re-run starts from an empty table
     const body = await api("/detect", { method: "POST", body: { texts } });
     results.replaceChildren(
       dataTable(
