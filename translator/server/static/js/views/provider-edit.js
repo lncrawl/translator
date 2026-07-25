@@ -1,6 +1,6 @@
-import { el, toast, busy, routeParts, goBack, dropdown } from "../ui.js";
-import { store, mutate, kindSchema, kindNames } from "../store.js";
 import { schemaForm } from "../schema-form.js";
+import { kindNames, kindSchema, mutate, store } from "../store.js";
+import { busy, dropdown, el, goBack, routeParts, toast } from "../ui.js";
 
 export const id = "provider-edit";
 export const title = "Provider";
@@ -96,7 +96,11 @@ function render() {
     const kind = kindSchema(kindSelect.value);
     const schema = kind?.provider_settings;
     const values = provider?.settings ?? {};
-    own = schemaForm(schema, values, { onChange, omit: sharedNames });
+
+    own = schemaForm(schema, values, {
+      onChange,
+      omit: sharedNames,
+    });
     shared = schemaForm(schema, values, {
       onChange: () => {
         onChange();
@@ -105,42 +109,37 @@ function render() {
       omit: Object.keys(schema?.properties || {}).filter(
         (n) => !sharedNames.includes(n),
       ),
-      // An empty override box shows the value it would inherit.
       placeholders: {
         failure_policy: store.config.failure_policy,
       },
     });
-    const credentials = own.fields.filter((f) => f.credential);
-    const endpoint = own.fields.filter((f) => !f.credential);
-    credentialNote = el(
-      "p",
-      { class: "hint", style: "margin:6px 0 0" },
-      "Credentials are stored in the config file and are write-only: once saved they are never shown again. Engines on this provider stay disabled until they are set.",
-    );
-    // "Requires an API key" only means something for a kind that has one, so
-    // for a kind like bing it is left out entirely rather than shown as a
-    // toggle that changes nothing. Its control still collects (the row is
-    // simply never appended), so the stored value round-trips untouched.
-    const gated = credentials.length
-      ? [
-          shared.field("requires_key").row,
-          ...credentials.map((f) => f.row),
-          credentialNote,
-        ]
-      : [];
-    const limits = shared.fields
-      .filter((f) => f.name !== "requires_key")
-      .map((f) => f.row);
 
-    settingsBox.replaceChildren(
-      ...[
-        el("h3", { style: "margin:18px 0 8px" }, "Settings"),
-        ...endpoint.map((f) => f.row),
-        ...gated,
+    const settings = [...own.fields]
+      .filter((f) => !f.credential)
+      .map((f) => f.row)
+      .filter(Boolean);
+    const credentials = own.fields.filter((f) => f.credential).filter(Boolean);
+    if (credentials.length > 0) {
+      settings.push(
+        shared.field("requires_key").row,
+        ...credentials.map((f) => f.row),
+      );
+    }
+    if (settings.length > 0) {
+      settings.unshift(el("h3", { style: "margin:18px 0 8px" }, "Settings"));
+    }
+
+    const limits = [...shared.fields]
+      .filter((f) => f.name !== "requires_key")
+      .map((f) => f.row)
+      .filter(Boolean);
+    if (limits.length > 0) {
+      limits.unshift(
         el("h3", { style: "margin:18px 0 8px" }, "Account limits"),
-        ...limits,
-      ].filter(Boolean),
-    );
+      );
+    }
+
+    settingsBox.replaceChildren(...settings, ...limits);
     applyKeyless();
   }
 

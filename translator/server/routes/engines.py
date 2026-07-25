@@ -13,6 +13,7 @@ from ...engines import (
     EngineStatus,
     capabilities_for,
     engine_class,
+    engine_settings_model,
     is_available,
     resolve_all,
 )
@@ -83,16 +84,34 @@ async def update_engine(
     if stored is None:
         raise ApiError(404, "not_found", f"unknown engine {engine_id!r}")
     changes = resolve_engine_secrets(payload.model_dump(exclude_unset=True), stored)
+    keep = _surviving_settings(store.config, stored, changes.get("provider"))
 
     def edit(data: dict[str, Any]) -> None:
         for entry in data["engines"]:
             if entry["id"] == engine_id:
-                merge_patch(entry, changes)
+                merge_patch(entry, changes, keep=keep)
 
     new_config = await apply_edit(store, edit)
     updated = new_config.engine(engine_id)
     assert updated is not None
     return _redacted(new_config, updated)
+
+
+def _surviving_settings(
+    config: AppConfig, stored: EngineConfig, target: str | None
+) -> set[str] | None:
+    """Settings keys that survive a move to ``target``, or ``None`` for "all".
+
+    An engine's settings model comes from its *provider's* kind, so moving it
+    across kinds retires the keys the new one does not declare. An unknown
+    ``target`` is left to whole-config validation to report.
+    """
+    if target is None or target == stored.provider:
+        return None
+    old, new = config.provider(stored.provider), config.provider(target)
+    if old is None or new is None or old.kind == new.kind:
+        return None
+    return set(engine_settings_model(new.kind).model_fields)
 
 
 def _redacted(config: AppConfig, engine: EngineConfig) -> EngineConfig:

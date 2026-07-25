@@ -58,14 +58,14 @@ keys:
 
 Providers and engines have the same shape: identity plus a `settings` bag.
 A provider is an `id`, a `kind`, and `settings`; an engine is an `id`, a
-`provider`, `enabled`, and `settings`. The bag holds both the fields every kind
-shares — `requires_key`, `rps`, `rpm`, `max_concurrency`, `failure_policy` for a
-provider; `max_input_tokens`, `chunk_tokens`, `source_langs`, `target_langs`,
-`failure_policy` for an engine — and whatever the kind itself adds, such as an
-endpoint, credentials, or a model name. A kind may also *narrow* an inherited
-field: bing caps `max_input_tokens` at what the service accepts, and baidu
-defaults `target_langs` to its catalog. Which fields exist is declared by the
-kind alone and served at `GET /schema`, which is what the web UI builds its
+`provider`, `enabled`, and `settings`. The bag holds the account-level or
+per-model fields every kind shares (rate limits and concurrency; token budgets,
+language coverage, failure-policy overrides) plus whatever the kind itself adds,
+such as an endpoint, credentials, or a model name. A kind may also *narrow* an
+inherited field: bing caps `max_input_tokens` at what the service accepts, and
+baidu defaults `target_langs` to its catalog. **Which fields exist, with their
+labels, help text and bounds, is declared by the kind alone and served at
+`GET /schema`** — that is the authoritative list, and what the web UI builds its
 forms from.
 
 ```yaml
@@ -145,6 +145,11 @@ flat configs whose engines carry `base_url`/`kind` inline instead of a
 `provider` reference predate the overlay format and are loaded standalone —
 defaults are not merged into them. Both are deprecated and will be dropped in
 a future release.
+
+Hoisting only moves a key; it does not keep a retired one working. A key its
+kind no longer declares now fails the load, naming the entry and the key
+(`settings.base_url: Extra inputs are not permitted` for a `deepl` provider,
+whose endpoint comes from the key itself) — delete it and the file loads.
 
 ## Engine keys
 

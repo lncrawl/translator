@@ -99,6 +99,31 @@ def test_sparse_patch_preserves_sibling_settings(tmp_path: Path) -> None:
     assert is_available(resolve(config, "gemini-flash-latest"))  # type: ignore[arg-type]
 
 
+def test_dropping_a_default_settings_key_round_trips(tmp_path: Path) -> None:
+    # Not setting a key the default sets is a valid config, so the file it saves
+    # must load again: the diff records the drop as a null, and the merge has to
+    # read that as "absent" instead of handing the model a null it rejects.
+    config = load_config(tmp_path / "missing.yml")
+    gemini = config.provider("gemini")
+    assert gemini is not None and "max_concurrency" in gemini.settings
+    gemini.settings = {
+        k: v for k, v in gemini.settings.items() if k != "max_concurrency"
+    }
+
+    path = tmp_path / "config.yml"
+    save_config(config, path)
+    reloaded = load_config(path)
+    validate_config(reloaded)
+    survivor = reloaded.provider("gemini")
+    assert survivor is not None
+    assert "max_concurrency" not in survivor.settings
+    # The field's own default applies, which is what the dropped key asked for.
+    resolved = resolve(reloaded, "gemini-flash-latest")
+    assert resolved is not None
+    assert resolved.provider_settings.max_concurrency == 1
+    assert build_overlay(reloaded) == build_overlay(config)
+
+
 def test_stale_patch_for_removed_default_is_dropped(tmp_path: Path) -> None:
     # A patch whose default is gone has nothing to patch; it is pruned rather
     # than failing the whole file to load. A custom entry declares its kind.

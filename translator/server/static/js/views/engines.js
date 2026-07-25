@@ -181,19 +181,19 @@ export function onStore() {
         el(
           "button",
           {
+            class: "danger small",
+            onclick: (event) => remove(event.target, engine),
+          },
+          "Delete",
+        ),
+        el(
+          "button",
+          {
             class: "ghost small",
             onclick: () =>
               (location.hash = `#/engine-edit?id=${encodeURIComponent(engine.id)}`),
           },
           "Edit",
-        ),
-        el(
-          "button",
-          {
-            class: "danger small",
-            onclick: (event) => remove(event.target, engine),
-          },
-          "Delete",
         ),
       ),
     );

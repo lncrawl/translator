@@ -13,6 +13,7 @@ from pydantic import BaseModel, model_validator
 
 from ...config import EngineKind, ProviderConfig
 from ...config.legacy import hoist_provider_settings
+from ...engines import engine_settings_model, provider_settings_model
 from ...errors import ApiError
 from ..deps import StoreDep
 from ..editing import apply_edit, merge_patch
@@ -49,11 +50,27 @@ async def update_provider(
         raise ApiError(404, "not_found", f"unknown provider {provider_id!r}")
     # Placeholder values mean "keep the stored secret" (see secrets module).
     changes = resolve_provider_secrets(payload.model_dump(exclude_unset=True), stored)
+    # Switching kind swaps in a different settings model — for the account and
+    # for every engine on it, since an engine's model comes from its provider's
+    # kind. Only what the new models declare can survive; the old kind's
+    # endpoint, credentials and model names go with it.
+    new_kind: EngineKind | None = changes.get("kind")
+    if new_kind == stored.kind:
+        new_kind = None
+    keep = set(provider_settings_model(new_kind).model_fields) if new_kind else None
+    engine_keep = (
+        set(engine_settings_model(new_kind).model_fields) if new_kind else None
+    )
 
     def edit(data: dict[str, Any]) -> None:
         for entry in data["providers"]:
             if entry["id"] == provider_id:
-                merge_patch(entry, changes)
+                merge_patch(entry, changes, keep=keep)
+        if engine_keep is None:
+            return
+        for entry in data["engines"]:
+            if entry["provider"] == provider_id:
+                merge_patch(entry, {}, keep=engine_keep)
 
     updated = (await apply_edit(store, edit)).provider(provider_id)
     assert updated is not None

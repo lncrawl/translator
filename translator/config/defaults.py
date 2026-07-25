@@ -25,6 +25,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "id": "bing",
             "kind": "bing",
             "settings": {
+                "requires_key": False,
                 "rps": 3,
                 "max_concurrency": 6,
             },

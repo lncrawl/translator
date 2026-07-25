@@ -66,10 +66,12 @@ def _undeclared_secrecy() -> list[str]:
     return missing
 
 
-assert not _undeclared_secrecy(), (
-    "settings fields must declare secrecy via setting()/credential():"
-    f" {_undeclared_secrecy()}"
-)
+_MISSING_SECRECY = _undeclared_secrecy()
+if _MISSING_SECRECY:
+    raise RuntimeError(
+        "settings fields must declare secrecy via setting()/credential():"
+        f" {_MISSING_SECRECY}"
+    )
 
 
 def engine_class(kind: EngineKind) -> type[Engine]:

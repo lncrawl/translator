@@ -9,7 +9,9 @@ without the file going stale. :func:`apply_overlay` merges on load;
 
 Merge depth is exactly one level into ``settings`` — and the diff matches it
 key by key. The two must agree or ``build_overlay ∘ apply_overlay`` stops
-round-tripping. Values *inside* ``settings`` (``extra_body`` included) replace
+round-tripping: a key the diff emits as ``None`` is one the user removed from a
+default, so the merge drops it instead of passing a null to the kind's model.
+Values *inside* ``settings`` (``extra_body`` included) replace
 wholesale: they are opaque values, not namespaces, and deep-merging them would
 leave no way to remove a key a default had set.
 """
@@ -37,13 +39,20 @@ def _by_id(entries: Any) -> dict[str, dict[str, Any]]:
 
 
 def _merge_entry(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
-    """Overlay one entry onto its default, merging ``settings`` one level."""
+    """Overlay one entry onto its default, merging ``settings`` one level.
+
+    A settings key worth ``None`` is a *removal*, not a value: that is how
+    :func:`_diff_settings` records a key the user dropped from a default, and
+    keeping it would hand the kind's model a null where its field wants an int.
+    Dropped means the field's own default applies, which is what the user had.
+    """
     merged = {**base, **patch}
     if "settings" in base or "settings" in patch:
-        merged["settings"] = {
+        settings = {
             **(base.get("settings") or {}),
             **(patch.get("settings") or {}),
         }
+        merged["settings"] = {k: v for k, v in settings.items() if v is not None}
     return merged
 
 

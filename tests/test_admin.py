@@ -75,6 +75,45 @@ def test_provider_key_set_remotely_enables_engines(client: TestClient) -> None:
     assert saved["providers"][0]["settings"]["api_key"] == "fresh"
 
 
+def test_patch_provider_kind_retires_the_old_kinds_settings(
+    client: TestClient,
+) -> None:
+    # The kind dropdown sends the new kind's fields; the old kind's base_url and
+    # api_key are not fields of the new model, so merging them back in would
+    # 422 on leftovers the caller never sent. Shared fields do survive — and the
+    # engines on the account follow, their model coming from the provider's kind.
+    resp = client.patch(
+        "/providers/p1",
+        json={"kind": "bing", "settings": {"rps": 3, "max_concurrency": 6}},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["settings"] == {"rps": 3, "max_concurrency": 6}
+    saved = saved_config(client)
+    assert saved["providers"][0]["kind"] == "bing"
+    assert client.get("/config").json()["engines"][0]["settings"] == {}
+
+
+def test_patch_engine_across_provider_kinds_retires_stale_settings(
+    client: TestClient,
+) -> None:
+    # An engine's settings model comes from its provider's kind, so moving it to
+    # a bing provider has to drop the openai-only `model`.
+    assert (
+        client.post(
+            "/providers", json={"id": "b", "kind": "bing", "settings": {}}
+        ).status_code
+        == 201
+    )
+    resp = client.patch("/engines/e1", json={"provider": "b"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {
+        "id": "e1",
+        "provider": "b",
+        "enabled": True,
+        "settings": {},
+    }
+
+
 def test_create_engine_on_existing_provider(client: TestClient) -> None:
     resp = client.post(
         "/engines",

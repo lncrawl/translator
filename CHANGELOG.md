@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Config shape**: everything specific to an engine kind now lives in an
+  entry's `settings` object, declared by the kind's own Pydantic models and
+  served as JSON Schema at `GET /schema`. Providers are `{id, kind, settings}`,
+  engines `{id, provider, enabled, settings}`. Files and PATCH bodies using the
+  old flat keys (`api_key`, `base_url`, `model`, …) still load and are rewritten
+  on the next save, but are deprecated. Unknown settings keys are rejected.
+- The failure policy can now be overridden per provider and per engine,
+  resolved engine > provider > global.
+
+### Removed
+
+- **DeepL no longer takes a `base_url`** — the endpoint is derived from the key
+  (`:fx` selects the free host). A config that sets it is now rejected; delete
+  the key to load.
+- `monthly_chars`, which nothing read. It is dropped from older files on load.
+- Bing's `max_input_tokens` is bounded by what the service accepts (20k) rather
+  than silently clamped, so a config asking for more is now rejected.
+
 ## [0.2.1] - 2026-07-25
 
 - Add PyPI classifiers and keywords

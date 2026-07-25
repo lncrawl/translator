@@ -101,17 +101,6 @@ export function onStore() {
         el(
           "div",
           { class: "foot" },
-          el(
-            "button",
-            {
-              class: "ghost small",
-              onclick: (event) => {
-                event.stopPropagation();
-                location.hash = `#/provider-edit?id=${encodeURIComponent(provider.id)}`;
-              },
-            },
-            "Edit",
-          ),
           el("span", { class: "spacer" }),
           el(
             "button",
@@ -123,6 +112,17 @@ export function onStore() {
               },
             },
             "Delete",
+          ),
+          el(
+            "button",
+            {
+              class: "ghost small",
+              onclick: (event) => {
+                event.stopPropagation();
+                location.hash = `#/provider-edit?id=${encodeURIComponent(provider.id)}`;
+              },
+            },
+            "Edit",
           ),
         ),
       );

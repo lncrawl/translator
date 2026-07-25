@@ -41,19 +41,29 @@ def validated_config(data: dict[str, Any]) -> AppConfig:
     return config
 
 
-def merge_patch(entry: dict[str, Any], changes: dict[str, Any]) -> None:
+def merge_patch(
+    entry: dict[str, Any], changes: dict[str, Any], *, keep: set[str] | None = None
+) -> None:
     """Apply a PATCH body to a config entry, merging ``settings`` one level.
 
     Same depth as the overlay merge: a patch naming one settings key must not
     delete the siblings it did not mention. A key present with an explicit
     ``null`` still writes through, so clearing a credential keeps working.
+
+    ``keep`` bounds which *stored* settings keys survive, for a patch that
+    changes which kind's settings model applies: the outgoing kind's keys are
+    not fields of the incoming one, so they have to go rather than merge into a
+    422 about leftovers the caller never sent.
     """
     settings = changes.get("settings")
     entry.update({k: v for k, v in changes.items() if k != "settings"})
-    if settings is not None:
-        merged = dict(entry.get("settings") or {})
-        merged.update(settings)
-        entry["settings"] = merged
+    if settings is None and keep is None:
+        return
+    merged = dict(entry.get("settings") or {})
+    if keep is not None:
+        merged = {key: value for key, value in merged.items() if key in keep}
+    merged.update(settings or {})
+    entry["settings"] = merged
 
 
 async def apply_edit(
