@@ -8,9 +8,9 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from translator.app import create_app
 from translator.config import AppConfig
-from translator.secrets import SECRET_PLACEHOLDER
+from translator.server import create_app
+from translator.server.secrets import SECRET_PLACEHOLDER
 
 API_KEY = "sk-real-token-1"
 BAIDU_SECRET = "baidu-secret-key"

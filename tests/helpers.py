@@ -45,6 +45,9 @@ class FakeEngine(Engine):
     """Deterministic engine: prefixes segments with its id, wraps HTML in
     [id]…, and raises queued exceptions first (one per call)."""
 
+    KIND = "openai"
+    HTML = HtmlSupport.PROMPT
+
     def __init__(
         self,
         engine_id: str,

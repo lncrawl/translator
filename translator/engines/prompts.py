@@ -1,13 +1,12 @@
-"""Prompt construction and response parsing for LLM engines."""
+"""Prompt construction and response parsing for LLM (openai-compatible) engines."""
 
 from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
 
-from .languages import display_name as lang_name
-from .schemas import HtmlContext
+from ..schemas import HtmlContext
+from ..text.languages import display_name as lang_name
 
 _FENCE = re.compile(r"^\s*```[a-zA-Z]*\s*|\s*```\s*$")
 _TRANSLATION_BLOCK = re.compile(r"<TRANSLATION>\s*(.*?)\s*</TRANSLATION>", re.DOTALL)
@@ -18,14 +17,6 @@ _THINK_BLOCK = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
 def strip_reasoning(raw: str) -> str:
     return _THINK_BLOCK.sub("", raw)
-
-
-def filter_glossary(glossary: dict[str, str], sources: Iterable[str]) -> dict[str, str]:
-    """Keep only terms that actually occur in the source text, to save tokens."""
-    if not glossary:
-        return {}
-    haystack = "\n".join(sources)
-    return {k: v for k, v in glossary.items() if k in haystack}
 
 
 def _strip_fences(raw: str) -> str:

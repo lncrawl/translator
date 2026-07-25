@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from translator.detect import detect_code, detect_language
+from translator.text.detect import detect_code, detect_language
 
 
 def test_chinese_prose() -> None:

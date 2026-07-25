@@ -33,11 +33,16 @@ Lists configured engines with capabilities and live status:
   "engines": [
     {
       "id": "zai-glm-flash",
+      "provider": "zai",
       "kind": "openai",
       "model": "glm-4.7-flash",
-      "capabilities": {"html": "prompt", "glossary": true, "max_input_tokens": 200000},
+      "enabled": true,           // enabled in config and its provider is keyed
+      "capabilities": {"html": "prompt", "glossary": true, "max_input_tokens": 200000,
+                       "source_langs": null, "target_langs": null},
       "status": "ok",            // ok | throttled | quota_exhausted | error | disabled
-      "quota_resets_at": null
+      "retry_at": null,          // when a benched engine becomes eligible again
+      "slots_free": 4,           // provider concurrency, shared by its engines
+      "slots_total": 4
     }
   ]
 }
@@ -153,28 +158,54 @@ omitted (the result is echoed back as `detected_source_lang`). Two layers:
 
 No network call, no engine quota. HTML input is text-extracted first.
 
+## Code structure
+
+The package is layered top-down; each layer only imports from the ones below
+it, so the translation core runs identically with or without the HTTP server.
+
+```
+translator/            public surface: schemas (the translation contract),
+                       errors, service (embedded sync facade), main
+ ├─ server/            FastAPI app, routes/ (one module per resource), deps,
+ │                     dto (HTTP-only shapes), secrets, dashboard static/
+ ├─ core/              router (which engine, and what on failure)
+ │                     pipeline (the workflow around an engine call)
+ │                     limits (provider/engine health) · store (live config)
+ ├─ engines/           one class per kind, reached via registry
+ │                     base (protocol) · http (shared client) · prompts
+ ├─ text/              html · languages · detect · glossary  (pure helpers)
+ └─ config/            models · defaults · overlay · io
+```
+
 ## Engine abstraction
+
+An engine class declares everything about its kind — no lookup table anywhere
+else has to be kept in sync with it:
 
 ```
 Engine (protocol)
- ├─ id, kind, capabilities: {html: native|prompt|none, glossary: bool,
- │   max_input_tokens, languages}
- ├─ async translate(segments, src, tgt, glossary, context) -> segments
- ├─ async translate_html(html, ...) -> (html, new_terms)   # only if html != none
- └─ classify_error(exc) -> transient | quota | fatal
+ ├─ KIND, CREDENTIALS, HTML, GLOSSARY            # class-level declarations
+ ├─ describe(config) -> capabilities             # answerable without an instance,
+ ├─ coverage(config) -> (source, target langs)   #   so disabled engines can still
+ ├─ supports_pair(config, src, tgt) -> bool      #   be listed and gated
+ ├─ async translate_segments(segments, src, tgt, glossary, context) -> segments
+ ├─ async translate_html(html, ...) -> HtmlResult   # only if HTML != none
+ └─ classify_http_error(response) -> transient | quota | fatal
 
-Implementations
+Implementations (registry.py maps kind -> class)
  ├─ OpenAICompatEngine — covers Z.AI, Cerebras, Mistral, Groq, OpenRouter,
  │   DeepSeek, ModelScope, Gemini (via its OpenAI-compat endpoint), and any
  │   local OpenAI-compatible server. One class, config-only differences.
- ├─ DeepLEngine — native HTML mode + native glossaries.
+ ├─ DeepLEngine — native HTML mode; terms forced by substitution.
  ├─ BingEngine — Microsoft Translator via Edge's keyless endpoint; the
- │   default keyless lane (html: native, no glossary).
- ├─ BaiduEngine — Baidu Translate (html: none, no glossary).
+ │   default keyless lane (html: native, terms via mstrans:dictionary).
+ ├─ BaiduEngine — Baidu Translate (html: none, finite language catalog).
  └─ (future) AzureEngine, TencentEngine — same protocol.
 ```
 
-Routing sits above engines:
+Routing sits above engines, and the pipeline sits above routing — the router
+picks an engine and handles failure, the pipeline decides what to send it
+(chunking, glossary narrowing, per-chunk context, response assembly):
 
 - **Lanes**: config defines an ordered engine list per task type
   (`short_text` vs `chapter`). E.g. the default chapter lane is `bing` →

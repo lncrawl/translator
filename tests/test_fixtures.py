@@ -9,11 +9,11 @@ from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 from helpers import FakeEngine, make_config
 
-from translator.app import create_app
-from translator.detect import detect_language
+from translator.core import Router
 from translator.engines.base import HtmlSupport
-from translator.html_tools import chunk_html, extract_segments, tag_names
-from translator.router import Router
+from translator.server import create_app
+from translator.text.detect import detect_language
+from translator.text.html import chunk_html, extract_segments, tag_names
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LANGS = ["zh", "ja", "ko"]

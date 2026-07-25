@@ -22,16 +22,10 @@ from typing import Any
 import httpx
 
 from ..config import ResolvedEngine
-from ..languages import bing_lang
 from ..schemas import HtmlContext
-from .base import (
-    Engine,
-    EngineCapabilities,
-    EngineError,
-    ErrorKind,
-    HtmlResult,
-    HtmlSupport,
-)
+from ..text.languages import base as base_lang
+from .base import EngineError, ErrorKind, HtmlResult, HtmlSupport
+from .http import HttpEngine
 
 _AUTH_URL = "https://edge.microsoft.com/translate/auth"
 _TRANSLATE_URL = "https://api.cognitive.microsofttranslator.com/translate"
@@ -40,30 +34,41 @@ _TOKEN_TTL = 480.0
 # MS caps a request at 50k chars across the whole array; stay well under it.
 _MAX_INPUT_TOKENS = 20_000
 
-_TIMEOUT = httpx.Timeout(connect=15.0, read=120.0, write=60.0, pool=60.0)
+# Microsoft Translator codes. Chinese needs a script; other languages use the
+# base subtag, which matches MS's format.
+_CODES = {
+    "zh": "zh-Hans",
+    "zh-Hans": "zh-Hans",
+    "zh-Hant": "zh-Hant",
+}
 
 
-class BingEngine(Engine):
+def lang_code(tag: str) -> str:
+    """Microsoft Translator code; base subtag for anything unmapped."""
+    return _CODES.get(tag) or base_lang(tag)
+
+
+class BingEngine(HttpEngine):
+    KIND = "bing"
+    HTML = HtmlSupport.NATIVE
+    READ_TIMEOUT = 120.0
+
     def __init__(self, config: ResolvedEngine) -> None:
         super().__init__(config)
-        self._client = httpx.AsyncClient(timeout=_TIMEOUT)
         self._token: str = ""
         self._token_expiry: float = float("-inf")
         self._lazy_token_lock: asyncio.Lock | None = None
+
+    @classmethod
+    def max_input_tokens(cls, config: ResolvedEngine) -> int | None:
+        """The service's own request cap bounds whatever config asks for."""
+        return min(config.max_input_tokens or _MAX_INPUT_TOKENS, _MAX_INPUT_TOKENS)
 
     @property
     def _token_lock(self) -> asyncio.Lock:
         if self._lazy_token_lock is None:
             self._lazy_token_lock = asyncio.Lock()
         return self._lazy_token_lock
-
-    @property
-    def capabilities(self) -> EngineCapabilities:
-        return EngineCapabilities(
-            html=HtmlSupport.NATIVE,
-            glossary=True,
-            max_input_tokens=_MAX_INPUT_TOKENS,
-        )
 
     @staticmethod
     def _apply_glossary(text: str, glossary: dict[str, str]) -> str:
@@ -83,9 +88,6 @@ class BingEngine(Engine):
             return f'<mstrans:dictionary translation="{dst}">{src}</mstrans:dictionary>'
 
         return pattern.sub(wrap, text)
-
-    async def close(self) -> None:
-        await self._client.aclose()
 
     async def _auth_token(self) -> str:
         if time.monotonic() < self._token_expiry:
@@ -112,9 +114,9 @@ class BingEngine(Engine):
         target_lang: str,
         html: bool,
     ) -> list[str]:
-        params: dict[str, Any] = {"api-version": "3.0", "to": bing_lang(target_lang)}
+        params: dict[str, Any] = {"api-version": "3.0", "to": lang_code(target_lang)}
         if source_lang:
-            params["from"] = bing_lang(source_lang)
+            params["from"] = lang_code(source_lang)
         if html:
             params["textType"] = "html"
         token = await self._auth_token()
@@ -126,34 +128,24 @@ class BingEngine(Engine):
                 json=[{"Text": t} for t in texts],
             )
         except httpx.HTTPError as exc:
-            raise EngineError(f"{self.id}: {exc}", ErrorKind.TRANSIENT) from exc
+            raise self.transport_error(exc) from exc
         if response.status_code != 200:
-            raise self._classify_http_error(response)
+            raise self.classify_http_error(response)
         try:
             data = response.json()
             results = [str(item["translations"][0]["text"]) for item in data]
         except (KeyError, IndexError, TypeError, ValueError) as exc:
-            raise EngineError(
-                f"{self.id}: malformed translate response", ErrorKind.TRANSIENT
-            ) from exc
-        if len(results) != len(texts):
-            raise EngineError(
-                f"{self.id}: expected {len(texts)} translations, got {len(results)}",
-                ErrorKind.TRANSIENT,
-            )
-        return results
+            raise self.malformed() from exc
+        return self.expect_count(results, len(texts))
 
-    def _classify_http_error(self, response: httpx.Response) -> EngineError:
+    def classify_http_error(self, response: httpx.Response) -> EngineError:
         status = response.status_code
-        detail = f"{self.id}: HTTP {status}: {response.text[:300]}"
         if status == 401:  # token expired mid-flight; drop it and retry
             self._token_expiry = float("-inf")
-            return EngineError(detail, ErrorKind.TRANSIENT)
+            return EngineError(self.detail(response), ErrorKind.TRANSIENT)
         if status == 429:
-            return EngineError(detail, ErrorKind.QUOTA)
-        if status >= 500:
-            return EngineError(detail, ErrorKind.TRANSIENT)
-        return EngineError(detail, ErrorKind.FATAL)
+            return EngineError(self.detail(response), ErrorKind.QUOTA)
+        return super().classify_http_error(response)
 
     async def translate_segments(
         self,

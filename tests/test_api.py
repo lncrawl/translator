@@ -4,10 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 from helpers import FakeEngine, make_config
 
-from translator.app import create_app
 from translator.config import AppConfig
+from translator.core import Router
 from translator.engines.base import EngineError, ErrorKind
-from translator.router import Router
+from translator.server import create_app
 
 # "llm" requires a key that is not set; "local" declares it needs none.
 BOOT_CONFIG_DATA = {

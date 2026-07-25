@@ -1,7 +1,7 @@
-"""Mutable application state: the live config and router, swapped atomically.
+"""The live config and router, swapped atomically.
 
 Config mutations build a fresh Router from the new config, swap it in, then
-persist the config to the YAML file (when a path is configured) and close the
+persist the config to the YAML file (when a path is configured) and retire the
 old router. In-flight requests keep the router instance they started with.
 """
 
@@ -13,30 +13,12 @@ from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any, TypeVar
 
-from .config import AppConfig, save_config
-from .engines import build_engine, is_available
-from .router import Router
+from ..config import AppConfig, save_config
+from .router import Router, build_router
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
-
-def build_router(config: AppConfig) -> Router:
-    engines = []
-    for resolved in config.resolved_engines():
-        if not is_available(resolved):
-            logger.warning(
-                "engine %s disabled: %s",
-                resolved.id,
-                "disabled in config"
-                if not resolved.enabled
-                else "no api key configured",
-            )
-            continue
-        engines.append(build_engine(resolved))
-    return Router(engines, config)
-
 
 # How long a replaced router lingers before its HTTP clients are closed, so
 # in-flight translations (up to ~15 min on slow lanes) can finish on it.

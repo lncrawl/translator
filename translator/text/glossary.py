@@ -1,4 +1,7 @@
-"""Forced-terminology for engines without a native per-request dictionary.
+"""Glossary handling: request-scoped filtering and forced terminology.
+
+:func:`filter_glossary` narrows a caller's glossary to the terms a given source
+text actually contains, so prompts and dictionaries stay small.
 
 Machine-translation engines that can't take a glossary get terms enforced by
 substitution: each source term is replaced with a single private-use-area
@@ -12,8 +15,18 @@ that instead.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 _PUA_START = 0xE000
 _PUA_END = 0xF8FF  # end of the BMP Private Use Area
+
+
+def filter_glossary(glossary: dict[str, str], sources: Iterable[str]) -> dict[str, str]:
+    """Keep only terms that actually occur in the source text, to save tokens."""
+    if not glossary:
+        return {}
+    haystack = "\n".join(sources)
+    return {k: v for k, v in glossary.items() if k in haystack}
 
 
 def protect(text: str, glossary: dict[str, str]) -> tuple[str, dict[str, str]]:

@@ -42,7 +42,7 @@ Three options, all optional:
 ### The config file is a sparse overlay
 
 `config.yml` is **not** a full snapshot — it is a sparse overlay on the
-built-in defaults (`translator/defaults.py`). On load, its entries merge onto
+built-in defaults (`translator/config/defaults.py`). On load, its entries merge onto
 the defaults **by id**, so you list only what you change; everything you omit
 falls back to the default. This is what keeps the file from going stale: when
 a new default provider/engine is added (or an existing one's model id or rate

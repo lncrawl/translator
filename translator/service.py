@@ -22,7 +22,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from .config import AppConfig, load_config, resolve_config_path
-from .detect import Detection, detect_language
+from .core import build_router, pipeline
+from .core.store import ConfigStore
 from .errors import AbortedError, InvalidRequestError
 from .schemas import (
     TranslateHtmlRequest,
@@ -30,7 +31,7 @@ from .schemas import (
     TranslateTextRequest,
     TranslateTextResponse,
 )
-from .state import ConfigStore, build_router
+from .text.detect import Detection, detect_language
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -101,7 +102,7 @@ class TranslatorService:
         for mounting into a host ASGI application. Set ``auth`` to declare a
         Bearer scheme so the docs show an Authorize button; the host still
         verifies the token."""
-        from .app import create_app
+        from .server import create_app
 
         return create_app(store=self.store, auth=auth)
 
@@ -117,7 +118,9 @@ class TranslatorService:
         timeout: float | None = None,
     ) -> TranslateTextResponse:
         request = _validate(TranslateTextRequest, request)
-        return self._call(self.store.router.translate_text(request), signal, timeout)
+        return self._call(
+            pipeline.translate_text(self.store.router, request), signal, timeout
+        )
 
     def translate_html(
         self,
@@ -127,7 +130,9 @@ class TranslatorService:
         timeout: float | None = None,
     ) -> TranslateHtmlResponse:
         request = _validate(TranslateHtmlRequest, request)
-        return self._call(self.store.router.translate_html(request), signal, timeout)
+        return self._call(
+            pipeline.translate_html(self.store.router, request), signal, timeout
+        )
 
     def close(self) -> None:
         """Close the router's engines and stop the loop thread."""

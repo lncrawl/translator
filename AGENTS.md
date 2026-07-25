@@ -41,16 +41,40 @@ bar). English → other languages must work but quality is best-effort.
 
 ## Repo layout
 
-- `translator/` — the FastAPI app: `api.py` (routes), `router.py` (lane
-  routing, rate limiting, fallback), `engines/` (OpenAI-compat + DeepL),
-  `prompts.py` (LLM prompts/parsing), `html_tools.py` (chunking, segment
-  pipeline, tag validation), `detect.py` (language detection), `config.py`.
+The package is layered; imports only ever point _down_ this list, and only the
+top level is public API.
+
+- `translator/` — the public surface: `__init__.py` (lazy exports —
+  `TranslatorService`, `create_app`, `detect_*`, the error taxonomy),
+  `schemas.py` (the translation contract, shared by both front ends),
+  `errors.py`, `service.py` (embedded sync facade over the core),
+  `main.py` (`uvicorn translator.main:app`).
+- `translator/server/` — the HTTP front end: `app.py` (factory), `routes/`
+  (one module per resource), `deps.py`, `dto.py` (HTTP-only shapes),
+  `editing.py` (config mutations), `secrets.py`, `middleware.py`,
+  `handlers.py`, `static/` (dashboard SPA).
+- `translator/core/` — transport-agnostic: `router.py` (lane selection,
+  retries, fallback), `pipeline.py` (the workflow around an engine call —
+  chunking, glossary, context, response assembly), `limits.py` (provider and
+  engine health/throughput), `store.py` (live config + router).
+- `translator/engines/` — one class per `kind`, all reached through
+  `registry.py`; `base.py` is the protocol, `http.py` the shared client and
+  error mapping, `prompts.py` the LLM prompts. Provider-specific language
+  codes live with the engine that speaks them.
+- `translator/text/` — dependency-light helpers: `html.py`, `languages.py`,
+  `detect.py`, `glossary.py`. Nothing here knows about engines or HTTP.
+- `translator/config/` — `models.py`, `defaults.py` (built-in free lanes),
+  `overlay.py` (the sparse merge/diff), `io.py`. The optional `config.yml` is
+  a sparse _overlay_ on the defaults, merged by id on load; see the deployment
+  guide's "sparse overlay" section.
 - `tests/` — pytest suite; `helpers.py` has `FakeEngine`; realistic chapter
   fixtures in `tests/fixtures/{zh,ja,ko}.html`.
 - `docs/` — engine research, service design, deployment guide.
-- `translator/defaults.py` — built-in defaults (all known free lanes). The
-  optional `config.yml` is a sparse _overlay_ on these, merged by id on load;
-  see the deployment guide's "sparse overlay" section.
+
+Adding an engine kind is one class in `translator/engines/` plus its entry in
+`registry.py` and the `EngineKind` literal — the registry asserts the two
+agree. Everything else (capabilities, credentials, language coverage) is
+declared on the class and read from there by both the router and the API.
 
 ## Commands
 

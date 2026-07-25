@@ -8,8 +8,8 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from translator.app import create_app
 from translator.config import AppConfig
+from translator.server import create_app
 
 BASE_CONFIG = {
     "providers": [

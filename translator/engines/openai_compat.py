@@ -7,24 +7,17 @@ are config-only.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 
-from .. import prompts
 from ..config import ResolvedEngine
-from ..html_tools import count_cjk, repair_untagged_output, strip_text, tag_names
-from ..languages import base as base_lang
 from ..schemas import HtmlContext
-from .base import (
-    CredentialField,
-    Engine,
-    EngineCapabilities,
-    EngineError,
-    ErrorKind,
-    HtmlResult,
-    HtmlSupport,
-)
+from ..text.html import count_cjk, repair_untagged_output, strip_text, tag_names
+from ..text.languages import base as base_lang
+from . import prompts
+from .base import CredentialField, EngineError, ErrorKind, HtmlResult, HtmlSupport
+from .http import HttpEngine
 
 # A 429 asking for a short pause is throttling; a long one is quota.
 _THROTTLE_CUTOFF_SECONDS = 60
@@ -32,39 +25,24 @@ _THROTTLE_CUTOFF_SECONDS = 60
 # Target languages (ISO 639-1 base) where CJK output characters are expected.
 _CJK_TARGETS = {"zh", "ja", "ko"}
 
-_TIMEOUT = httpx.Timeout(connect=15.0, read=900.0, write=60.0, pool=60.0)
 
-
-class OpenAICompatEngine(Engine):
-    CREDENTIALS = [
+class OpenAICompatEngine(HttpEngine):
+    KIND = "openai"
+    HTML = HtmlSupport.PROMPT
+    READ_TIMEOUT = 900.0  # a local CPU model can take ~15 min for one chapter
+    CREDENTIALS: ClassVar[list[CredentialField]] = [
         CredentialField(
             "api_key", "API key", description="Bearer token for the provider"
         )
     ]
 
     def __init__(self, config: ResolvedEngine) -> None:
-        super().__init__(config)
         if not config.base_url:
             raise ValueError(f"engine {config.id!r}: openai kind requires base_url")
         headers = {}
         if config.api_key:
             headers["Authorization"] = f"Bearer {config.api_key}"
-        self._client = httpx.AsyncClient(
-            base_url=config.base_url.rstrip("/"),
-            headers=headers,
-            timeout=_TIMEOUT,
-        )
-
-    @property
-    def capabilities(self) -> EngineCapabilities:
-        return EngineCapabilities(
-            html=HtmlSupport.PROMPT,
-            glossary=True,
-            max_input_tokens=self.config.max_input_tokens,
-        )
-
-    async def close(self) -> None:
-        await self._client.aclose()
+        super().__init__(config, base_url=config.base_url, headers=headers)
 
     async def _chat(
         self, messages: list[dict[str, str]], temperature: float = 0.3
@@ -79,33 +57,32 @@ class OpenAICompatEngine(Engine):
         try:
             response = await self._client.post("/chat/completions", json=payload)
         except httpx.HTTPError as exc:
-            raise EngineError(f"{self.id}: {exc}", ErrorKind.TRANSIENT) from exc
+            raise self.transport_error(exc) from exc
 
         if response.status_code != 200:
-            raise self._classify_http_error(response)
+            raise self.classify_http_error(response)
         try:
             content = response.json()["choices"][0]["message"]["content"]
         except (KeyError, IndexError, ValueError) as exc:
-            raise EngineError(
-                f"{self.id}: malformed completion response", ErrorKind.TRANSIENT
-            ) from exc
+            raise self.malformed("completion response") from exc
         if not content or not str(content).strip():
             raise EngineError(f"{self.id}: empty completion", ErrorKind.TRANSIENT)
         return str(content)
 
-    def _classify_http_error(self, response: httpx.Response) -> EngineError:
+    def classify_http_error(self, response: httpx.Response) -> EngineError:
         status = response.status_code
-        detail = f"{self.id}: HTTP {status}: {response.text[:300]}"
         if status == 429:
             retry_after = _parse_retry_after(response)
             if retry_after is not None and retry_after <= _THROTTLE_CUTOFF_SECONDS:
-                return EngineError(detail, ErrorKind.TRANSIENT)
-            return EngineError(detail, ErrorKind.QUOTA, retry_after_seconds=retry_after)
+                return EngineError(self.detail(response), ErrorKind.TRANSIENT)
+            return EngineError(
+                self.detail(response), ErrorKind.QUOTA, retry_after_seconds=retry_after
+            )
         if status == 402:
-            return EngineError(detail, ErrorKind.QUOTA)
-        if status in (408,) or status >= 500:
-            return EngineError(detail, ErrorKind.TRANSIENT)
-        return EngineError(detail, ErrorKind.FATAL)
+            return EngineError(self.detail(response), ErrorKind.QUOTA)
+        if status == 408:
+            return EngineError(self.detail(response), ErrorKind.TRANSIENT)
+        return super().classify_http_error(response)
 
     async def translate_segments(
         self,

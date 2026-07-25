@@ -2,13 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from translator.languages import (
-    base,
-    canonicalize,
-    deepl_source_lang,
-    deepl_target_lang,
-    display_name,
-)
+from translator.engines.deepl import source_lang_code as deepl_source_lang
+from translator.engines.deepl import target_lang_code as deepl_target_lang
+from translator.text.languages import base, canonicalize, display_name
 
 
 @pytest.mark.parametrize(

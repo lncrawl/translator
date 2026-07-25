@@ -9,8 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from helpers import FakeEngine, make_config
 
+from translator.core import Router
 from translator.errors import InvalidRequestError
-from translator.router import Router
 from translator.schemas import HtmlContext, TranslateTextRequest
 from translator.service import AbortedError, TranslatorService
 

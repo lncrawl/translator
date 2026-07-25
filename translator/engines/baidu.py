@@ -1,8 +1,8 @@
 """Baidu Translate engine (official free API) — strong on CJK.
 
-Credentials are the App ID + Secret Key from fanyi-api.baidu.com, supplied as
-the provider ``api_key`` in the form ``app_id:secret_key``. Each request is
-signed with md5(app_id + q + salt + secret_key).
+Credentials are the App ID + Secret Key from fanyi-api.baidu.com, kept as
+provider options. Each request is signed with md5(app_id + q + salt +
+secret_key).
 
 Text-only (``html: none``): the service extracts/reinjects markup around it.
 Baidu splits ``q`` on newlines and caps a request near 6000 bytes, so segments
@@ -13,34 +13,58 @@ from __future__ import annotations
 
 import random
 from hashlib import md5
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 
 from ..config import ResolvedEngine
-from ..glossary import protect, reinject
-from ..languages import baidu_lang
-from .base import (
-    CredentialField,
-    Engine,
-    EngineCapabilities,
-    EngineError,
-    ErrorKind,
-    HtmlSupport,
-)
+from ..text.glossary import protect, reinject
+from ..text.languages import base as base_lang
+from .base import CredentialField, EngineError, ErrorKind, HtmlSupport
+from .http import HttpEngine
 
 _URL = "https://fanyi-api.baidu.com/api/trans/vip/translate"
 # Baidu caps a query near 6000 bytes; stay under it (CJK chars are 3 bytes).
 _MAX_QUERY_BYTES = 5000
-_TIMEOUT = httpx.Timeout(connect=15.0, read=120.0, write=60.0, pool=60.0)
 
 # Baidu error codes worth distinguishing from the fatal default.
 _TRANSIENT_CODES = {"52001", "52002", "54003", "54005"}
 _QUOTA_CODES = {"54004"}
 
+# Baidu translate codes (machinetranslate.org/baidu); several diverge from ISO.
+_CODES = {
+    "ar": "ara",
+    "bn": "ben",
+    "de": "de",
+    "en": "en",
+    "es": "spa",
+    "fr": "fra",
+    "hi": "hin",
+    "id": "ind",
+    "ja": "jpn",
+    "ko": "kor",
+    "pt": "pt",
+    "ru": "ru",
+    "th": "tha",
+    "tr": "tur",
+    "ur": "urd",
+    "vi": "vie",
+    "zh": "zh",
+    "zh-Hans": "zh",
+    "zh-Hant": "cht",
+}
 
-class BaiduEngine(Engine):
-    CREDENTIALS = [
+
+def lang_code(tag: str) -> str | None:
+    """Baidu translate code, or None when Baidu doesn't support the tag."""
+    return _CODES.get(tag) or _CODES.get(base_lang(tag))
+
+
+class BaiduEngine(HttpEngine):
+    KIND = "baidu"
+    HTML = HtmlSupport.NONE
+    READ_TIMEOUT = 120.0
+    CREDENTIALS: ClassVar[list[CredentialField]] = [
         CredentialField(
             "app_id", "App ID", secret=False, description="From fanyi-api.baidu.com"
         ),
@@ -50,23 +74,32 @@ class BaiduEngine(Engine):
     ]
 
     def __init__(self, config: ResolvedEngine) -> None:
-        super().__init__(config)
         app_id = config.credential("app_id")
         secret = config.credential("secret_key")
         if not app_id or not secret:
             raise ValueError(
                 f"engine {config.id!r}: baidu requires 'app_id' and 'secret_key'"
             )
+        super().__init__(config)
         self._app_id = app_id
         self._secret = secret
-        self._client = httpx.AsyncClient(timeout=_TIMEOUT)
 
-    @property
-    def capabilities(self) -> EngineCapabilities:
-        return EngineCapabilities(html=HtmlSupport.NONE, glossary=True)
+    @classmethod
+    def coverage(
+        cls, config: ResolvedEngine
+    ) -> tuple[list[str] | None, list[str] | None]:
+        """Baidu has a finite catalog; config may narrow it but not widen it."""
+        catalog = sorted({base_lang(tag) for tag in _CODES})
+        return config.source_langs, config.target_langs or catalog
 
-    async def close(self) -> None:
-        await self._client.aclose()
+    @classmethod
+    def supports_pair(
+        cls, config: ResolvedEngine, source_lang: str | None, target_lang: str
+    ) -> bool:
+        # Baidu auto-detects the source; only the target is constrained.
+        return super().supports_pair(config, source_lang, target_lang) and (
+            lang_code(target_lang) is not None
+        )
 
     def _sign(self, query: str, salt: str) -> str:
         raw = f"{self._app_id}{query}{salt}{self._secret}"
@@ -88,11 +121,9 @@ class BaiduEngine(Engine):
             response.raise_for_status()
             data = response.json()
         except httpx.HTTPError as exc:
-            raise EngineError(f"{self.id}: {exc}", ErrorKind.TRANSIENT) from exc
+            raise self.transport_error(exc) from exc
         except ValueError as exc:
-            raise EngineError(
-                f"{self.id}: malformed translate response", ErrorKind.TRANSIENT
-            ) from exc
+            raise self.malformed() from exc
         if "error_code" in data:
             raise self._classify_error(
                 str(data["error_code"]), data.get("error_msg", "")
@@ -100,9 +131,7 @@ class BaiduEngine(Engine):
         try:
             return [str(item["dst"]) for item in data["trans_result"]]
         except (KeyError, TypeError) as exc:
-            raise EngineError(
-                f"{self.id}: malformed translate response", ErrorKind.TRANSIENT
-            ) from exc
+            raise self.malformed() from exc
 
     def _classify_error(self, code: str, message: str) -> EngineError:
         detail = f"{self.id}: baidu error {code}: {message}"
@@ -121,7 +150,7 @@ class BaiduEngine(Engine):
         glossary: dict[str, str],
         context: str | None = None,
     ) -> list[str]:
-        target = baidu_lang(target_lang)
+        target = lang_code(target_lang)
         if target is None:
             raise EngineError(
                 f"{self.id}: target language {target_lang!r} is not supported by Baidu",

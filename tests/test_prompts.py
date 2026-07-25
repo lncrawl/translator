@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from translator.prompts import (
+from translator.engines.prompts import (
     build_html_messages,
-    filter_glossary,
     parse_html_response,
     parse_text_response,
 )
 from translator.schemas import HtmlContext
+from translator.text.glossary import filter_glossary
 
 
 def test_filter_glossary_keeps_only_present_terms() -> None:

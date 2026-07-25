@@ -16,8 +16,8 @@ import os
 import pytest
 
 from translator.config import load_config
+from translator.core import build_router, pipeline
 from translator.schemas import TranslateHtmlRequest, TranslateTextRequest
-from translator.state import build_router
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("LIVE_ENGINE_TEST") != "1",
@@ -35,21 +35,23 @@ async def test_every_enabled_engine_translates() -> None:
     try:
         for engine in enabled:
             try:
-                text = await router.translate_text(
+                text = await pipeline.translate_text(
+                    router,
                     TranslateTextRequest(
                         texts=["斗破苍穹"], source_lang="zh", engine=engine.id
-                    )
+                    ),
                 )
                 assert text.translations[0].strip()
                 print(f"\n[{engine.id}] title: {text.translations[0]!r}")
 
-                html = await router.translate_html(
+                html = await pipeline.translate_html(
+                    router,
                     TranslateHtmlRequest(
                         html="<p>萧炎走了进来，看着面前的老者。</p>",
                         source_lang="zh",
                         glossary={"萧炎": "Xiao Yan"},
                         engine=engine.id,
-                    )
+                    ),
                 )
                 assert html.html.strip()
                 assert "<p>" in html.html

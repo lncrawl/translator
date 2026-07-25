@@ -16,8 +16,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .config import AppConfig, EngineKind, ProviderConfig
-from .engines import credential_fields
+from ..config import AppConfig, EngineKind, ProviderConfig
+from ..engines import credential_fields
 
 SECRET_PLACEHOLDER = "__secret__"
 

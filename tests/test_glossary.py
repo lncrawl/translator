@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from translator.glossary import protect, reinject
+from translator.text.glossary import protect, reinject
 
 
 def test_protect_and_reinject_roundtrip() -> None:

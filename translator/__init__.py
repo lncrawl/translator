@@ -41,19 +41,19 @@ def __getattr__(name: str) -> Any:
 
         return TranslatorService
     if name == "detect_language":
-        from .detect import detect_language
+        from .text.detect import detect_language
 
         return detect_language
     if name == "detect_code":
-        from .detect import detect_code
+        from .text.detect import detect_code
 
         return detect_code
     if name == "Detection":
-        from .detect import Detection
+        from .text.detect import Detection
 
         return Detection
     if name == "create_app":
-        from .app import create_app
+        from .server import create_app
 
         return create_app
     if name in ("TranslatorError", "ApiError", "AbortedError", "InvalidRequestError"):

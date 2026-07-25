@@ -1,13 +1,22 @@
-"""Engine protocol: what every translation backend must provide."""
+"""Engine protocol: what every translation backend must provide.
+
+A backend declares itself entirely through class attributes and classmethods —
+its ``KIND``, the credentials it needs, the capabilities it offers, and the
+languages it covers. All of that is answerable *without instantiating* the
+engine, which is what lets the registry describe disabled or unconfigured
+engines and lets the router gate language pairs before dispatch.
+"""
 
 from __future__ import annotations
 
 import abc
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from .._compat import StrEnum
-from ..config import ResolvedEngine
+from ..config import EngineKind, ResolvedEngine
 from ..schemas import HtmlContext
+from ..text.languages import allowed as lang_allowed
 
 
 class HtmlSupport(StrEnum):
@@ -79,8 +88,14 @@ class EngineError(Exception):
 class Engine(abc.ABC):
     """A translation backend. Instances are long-lived and concurrency-safe."""
 
+    # The config ``kind`` this class implements; the registry keys on it.
+    KIND: ClassVar[EngineKind]
     # Credentials a provider of this kind needs; empty means keyless.
-    CREDENTIALS: list[CredentialField] = []
+    CREDENTIALS: ClassVar[list[CredentialField]] = []
+    # How the backend handles markup, and whether glossary terms are enforced
+    # (natively by the provider, or by the substitution this package does).
+    HTML: ClassVar[HtmlSupport]
+    GLOSSARY: ClassVar[bool] = True
 
     def __init__(self, config: ResolvedEngine) -> None:
         self.config = config
@@ -89,17 +104,57 @@ class Engine(abc.ABC):
     def id(self) -> str:
         return self.config.id
 
+    # -- description (answerable without an instance) --------------------------
+
+    @classmethod
+    def describe(cls, config: ResolvedEngine) -> EngineCapabilities:
+        """Capabilities of this kind under ``config``. The single source of
+        truth: the instance property below forwards to it, so a listed engine
+        and a running one can never report different capabilities."""
+        source_langs, target_langs = cls.coverage(config)
+        return EngineCapabilities(
+            html=cls.HTML,
+            glossary=cls.GLOSSARY,
+            max_input_tokens=cls.max_input_tokens(config),
+            source_langs=source_langs,
+            target_langs=target_langs,
+        )
+
+    @classmethod
+    def max_input_tokens(cls, config: ResolvedEngine) -> int | None:
+        """Context budget for one request; ``None`` means unconstrained.
+        Kinds with a hard service limit clamp the configured value."""
+        return config.max_input_tokens
+
+    @classmethod
+    def coverage(
+        cls, config: ResolvedEngine
+    ) -> tuple[list[str] | None, list[str] | None]:
+        """(source, target) base languages covered, ``None`` meaning
+        unrestricted. LLM and broad NMT kinds accept any pair; a kind with a
+        finite catalog overrides this to declare it."""
+        return config.source_langs, config.target_langs
+
+    @classmethod
+    def supports_pair(
+        cls, config: ResolvedEngine, source_lang: str | None, target_lang: str
+    ) -> bool:
+        """Whether this kind can handle the pair under ``config``. Checked
+        before dispatch so the router can skip the engine and reject
+        unsupported pairs early. Config allowlists apply to every kind; a kind
+        with a finite catalog narrows further by overriding."""
+        return lang_allowed(source_lang, config.source_langs) and lang_allowed(
+            target_lang, config.target_langs
+        )
+
     @property
-    @abc.abstractmethod
-    def capabilities(self) -> EngineCapabilities: ...
+    def capabilities(self) -> EngineCapabilities:
+        return type(self).describe(self.config)
 
     def supports(self, source_lang: str | None, target_lang: str) -> bool:
-        """Whether this engine can handle the pair, checked before dispatch so
-        the router can skip it and reject unsupported pairs early. Delegates to
-        the shared coverage logic keyed by kind + config allowlists."""
-        from ..languages import supports_pair
+        return type(self).supports_pair(self.config, source_lang, target_lang)
 
-        return supports_pair(self.config, source_lang, target_lang)
+    # -- translation -----------------------------------------------------------
 
     @abc.abstractmethod
     async def translate_segments(

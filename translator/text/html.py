@@ -1,15 +1,15 @@
-"""HTML utilities: token estimation, chunking, segment pipeline, validation."""
+"""HTML utilities: token estimation, chunking, segment extraction, validation.
+
+Pure functions over markup — no engine, no network. The pipeline that drives an
+engine over these segments lives in ``translator.core.pipeline``.
+"""
 
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
 
 from bs4 import BeautifulSoup, Tag
 from bs4.element import NavigableString
-
-if TYPE_CHECKING:
-    from .engines.base import Engine, HtmlResult
 
 # Tags whose text content must never be translated.
 SKIP_TAGS = {"script", "style", "code", "pre"}
@@ -79,43 +79,6 @@ def extract_segments(html: str) -> tuple[BeautifulSoup, list[NavigableString]]:
         if node.strip() and _is_translatable(node)
     ]
     return soup, nodes
-
-
-async def translate_html_via_segments(
-    engine: Engine,
-    html: str,
-    *,
-    source_lang: str | None,
-    target_lang: str,
-    glossary: dict[str, str],
-    context: str | None = None,
-) -> HtmlResult:
-    """Fallback pipeline for engines that cannot handle markup themselves:
-    extract text nodes, translate them as segments, reinject in place."""
-    from .engines.base import EngineError, ErrorKind, HtmlResult
-
-    soup, nodes = extract_segments(html)
-    if not nodes:
-        return HtmlResult(html=html)
-    translated = await engine.translate_segments(
-        [str(n) for n in nodes],
-        source_lang=source_lang,
-        target_lang=target_lang,
-        glossary=glossary,
-        context=context,
-    )
-    if len(translated) != len(nodes):
-        raise EngineError(
-            f"{engine.id}: returned {len(translated)} segments for {len(nodes)}"
-            " text nodes",
-            ErrorKind.TRANSIENT,
-        )
-    for node, text in zip(nodes, translated):
-        node.replace_with(text)
-    return HtmlResult(
-        html=str(soup),
-        warnings=["segment-level translation: engine lacks HTML support"],
-    )
 
 
 def repair_untagged_output(source_html: str, output: str) -> str | None:
