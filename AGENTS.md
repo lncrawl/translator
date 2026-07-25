@@ -59,22 +59,50 @@ top level is public API.
   engine health/throughput), `store.py` (live config + router).
 - `translator/engines/` — one class per `kind`, all reached through
   `registry.py`; `base.py` is the protocol, `http.py` the shared client and
-  error mapping, `prompts.py` the LLM prompts. Provider-specific language
-  codes live with the engine that speaks them.
+  error mapping, `prompts.py` the LLM prompts. Everything specific to a kind
+  lives on its class: its two settings models, its capabilities, and the
+  provider-specific language codes it speaks. `registry.py` also owns
+  `ResolvedEngine` resolution and `validate_config`.
 - `translator/text/` — dependency-light helpers: `html.py`, `languages.py`,
   `detect.py`, `glossary.py`. Nothing here knows about engines or HTTP.
 - `translator/config/` — `models.py`, `defaults.py` (built-in free lanes),
-  `overlay.py` (the sparse merge/diff), `io.py`. The optional `config.yml` is
-  a sparse _overlay_ on the defaults, merged by id on load; see the deployment
-  guide's "sparse overlay" section.
+  `overlay.py` (the sparse merge/diff), `io.py`, and `legacy.py` (support for
+  older file shapes, quarantined so it can be deleted as a unit). The optional
+  `config.yml` is a sparse _overlay_ on the defaults, merged by id on load —
+  one level deep into `settings`; see the deployment guide's "sparse overlay"
+  section. Kind-specific fields are an opaque `settings` dict here: this layer
+  sits below `engines` and cannot import it, so per-kind validation lives in
+  `engines.validate_config`, which `ConfigStore` runs for every config that
+  becomes live.
 - `tests/` — pytest suite; `helpers.py` has `FakeEngine`; realistic chapter
   fixtures in `tests/fixtures/{zh,ja,ko}.html`.
 - `docs/` — engine research, service design, deployment guide.
 
-Adding an engine kind is one class in `translator/engines/` plus its entry in
-`registry.py` and the `EngineKind` literal — the registry asserts the two
-agree. Everything else (capabilities, credentials, language coverage) is
-declared on the class and read from there by both the router and the API.
+Provider and engine entries are both identity + `settings`: `id` + `kind` for a
+provider, `id` + `provider` + `enabled` for an engine. Each kind's
+`ProviderSettings` / `EngineSettings` subclass covers the shared fields it
+inherits (rate limits and concurrency; token budgets and language coverage) as
+well as its own endpoint, credentials or model name — and may narrow an
+inherited field rather than overriding a method, which is how bing bounds
+`max_input_tokens` and baidu defaults `target_langs` to its catalog. `enabled`
+stays outside `settings`: it is a lifecycle flag toggled from the engines list,
+and reading it should not require resolving through a provider.
+
+Adding an engine kind is one file in `translator/engines/` — the `Engine`
+subclass plus the `ProviderSettings` / `EngineSettings` models it declares —
+listed in `registry.py` and the `EngineKind` literal, which the registry
+asserts agree. Everything else follows from the class: capabilities, language
+coverage, and the settings models, whose fields carry their own labels, help
+text and secrecy. Credentials are just settings fields declared with
+`credential()`; the availability gate, secret redaction and the dashboard's
+inputs all derive from them. Declare every settings field with `setting()` or
+`credential()` — both require an explicit `secret=`, and the registry refuses
+to import if one is missing, because an unmarked token would be readable
+through `GET /config`.
+
+The dashboard renders every provider, engine and policy form from
+`GET /schema`, generated from these models, so a new field needs no JavaScript
+change.
 
 ## Commands
 

@@ -11,7 +11,9 @@ from translator.engines.deepl import DeepLEngine
 
 
 def make_engine(handler: httpx.MockTransport) -> DeepLEngine:
-    config = make_resolved("deepl", kind="deepl", base_url=None, api_key="secret:fx")
+    config = make_resolved(
+        "deepl", kind="deepl", provider_settings={"api_key": "secret:fx"}
+    )
     engine = DeepLEngine(config)
     engine._client = httpx.AsyncClient(
         base_url="https://api-free.deepl.com", transport=handler
@@ -20,7 +22,9 @@ def make_engine(handler: httpx.MockTransport) -> DeepLEngine:
 
 
 async def test_free_key_selects_free_base_url() -> None:
-    config = make_resolved("deepl", kind="deepl", base_url=None, api_key="secret:fx")
+    config = make_resolved(
+        "deepl", kind="deepl", provider_settings={"api_key": "secret:fx"}
+    )
     engine = DeepLEngine(config)
     assert str(engine._client.base_url).startswith("https://api-free.deepl.com")
     await engine.close()

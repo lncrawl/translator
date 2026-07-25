@@ -1,18 +1,30 @@
 """The kind → implementation table.
 
-One place maps a config ``kind`` to the class that implements it; construction,
-capability description, and credential discovery all read from it, so adding a
-backend means writing one class and listing it here. The module-level check
-keeps the table and the ``EngineKind`` literal from drifting apart.
+One place maps a config ``kind`` to the class that implements it. Construction,
+capability description, credential discovery, settings validation and the join
+of a provider with its engine all read from it, so adding a backend means
+writing one class and listing it here. The module-level checks keep the table,
+the ``EngineKind`` literal, and the settings declarations honest.
 """
 
 from __future__ import annotations
 
-from typing import get_args
+from typing import Any, get_args
 
-from ..config import EngineKind, ResolvedEngine
+from pydantic import ValidationError
+
+from ..config import AppConfig, EngineConfig, EngineKind, ProviderConfig
 from .baidu import BaiduEngine
-from .base import CredentialField, Engine, EngineCapabilities
+from .base import (
+    CredentialField,
+    Engine,
+    EngineCapabilities,
+    EngineSettings,
+    ProviderSettings,
+    ResolvedEngine,
+    Settings,
+    field_flag,
+)
 from .bing import BingEngine
 from .deepl import DeepLEngine
 from .openai_compat import OpenAICompatEngine
@@ -34,6 +46,32 @@ assert set(ENGINE_CLASSES) == set(get_args(EngineKind)), (
 )
 
 
+def _undeclared_secrecy() -> list[str]:
+    """Settings fields that never say whether they hold a secret.
+
+    Secrecy drives redaction, and as plain Pydantic fields a base URL and an
+    API token are indistinguishable — a forgotten marker would leak a token
+    through ``GET /config`` with nothing failing. Requiring the marker turns
+    that into an import error.
+    """
+    missing = []
+    for kind, cls in ENGINE_CLASSES.items():
+        for scope, model in (
+            ("provider", cls.PROVIDER_SETTINGS),
+            ("engine", cls.ENGINE_SETTINGS),
+        ):
+            for name in model.model_fields:
+                if field_flag(model, name, "secret") is None:
+                    missing.append(f"{kind}.{scope}.{name}")
+    return missing
+
+
+assert not _undeclared_secrecy(), (
+    "settings fields must declare secrecy via setting()/credential():"
+    f" {_undeclared_secrecy()}"
+)
+
+
 def engine_class(kind: EngineKind) -> type[Engine]:
     return ENGINE_CLASSES[kind]
 
@@ -51,15 +89,107 @@ def capabilities_for(config: ResolvedEngine) -> EngineCapabilities:
 def credential_fields(kind: EngineKind) -> list[CredentialField]:
     """The credentials a provider of ``kind`` needs, so the availability gate
     and the dashboard's credential form both read one declaration."""
-    return engine_class(kind).CREDENTIALS
+    return engine_class(kind).credentials()
+
+
+def provider_settings_model(kind: EngineKind) -> type[ProviderSettings]:
+    return engine_class(kind).PROVIDER_SETTINGS
+
+
+def engine_settings_model(kind: EngineKind) -> type[EngineSettings]:
+    return engine_class(kind).ENGINE_SETTINGS
+
+
+def provider_settings_of(config: AppConfig, provider_id: str) -> ProviderSettings:
+    """The validated account settings for one provider."""
+    provider = config.provider(provider_id)
+    assert provider is not None
+    return provider_settings_model(provider.kind).model_validate(provider.settings)
+
+
+def secret_keys(model: type[Settings]) -> set[str]:
+    """Declared fields of ``model`` that hold secrets."""
+    return {
+        name for name in model.model_fields if field_flag(model, name, "secret") is True
+    }
+
+
+# -- resolution ----------------------------------------------------------------
+
+
+def resolve(config: AppConfig, engine_id: str) -> ResolvedEngine | None:
+    """Join an engine with its provider, validating both settings bags."""
+    engine = config.engine(engine_id)
+    if engine is None:
+        return None
+    provider = config.provider(engine.provider)
+    assert provider is not None  # AppConfig validates the reference
+    return _resolve(provider, engine)
+
+
+def resolve_all(config: AppConfig) -> list[ResolvedEngine]:
+    resolved = [resolve(config, e.id) for e in config.engines]
+    return [r for r in resolved if r is not None]
+
+
+def _resolve(provider: ProviderConfig, engine: EngineConfig) -> ResolvedEngine:
+    cls = engine_class(provider.kind)
+    return ResolvedEngine(
+        id=engine.id,
+        provider_id=provider.id,
+        kind=provider.kind,
+        enabled=engine.enabled,
+        provider_settings=cls.PROVIDER_SETTINGS.model_validate(provider.settings),
+        engine_settings=cls.ENGINE_SETTINGS.model_validate(engine.settings),
+    )
+
+
+# -- validation ----------------------------------------------------------------
+
+
+def validate_config(config: AppConfig) -> None:
+    """Validate every settings bag against the model its kind declares.
+
+    The config layer stores ``settings`` as an opaque dict because it may not
+    import this package, so this is where a kind's own rules are enforced.
+    ``ConfigStore`` runs it for every config that becomes live.
+    """
+    for provider in config.providers:
+        _check(provider.kind, "provider", provider.id, provider.settings)
+    for engine in config.engines:
+        owner = config.provider(engine.provider)
+        assert owner is not None  # AppConfig validates the reference
+        _check(owner.kind, "engine", engine.id, engine.settings)
+
+
+def _check(
+    kind: EngineKind, scope: str, entry_id: str, settings: dict[str, Any]
+) -> None:
+    model: type[Settings] = (
+        provider_settings_model(kind)
+        if scope == "provider"
+        else engine_settings_model(kind)
+    )
+    try:
+        model.model_validate(settings)
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        location = ".".join(str(part) for part in first.get("loc", ())) or "settings"
+        raise ValueError(
+            f"{scope} {entry_id!r} ({kind}): settings.{location}: {first.get('msg')}"
+        ) from exc
+
+
+# -- availability --------------------------------------------------------------
 
 
 def is_configured(resolved: ResolvedEngine) -> bool:
     """Whether every required credential for this engine's kind is set."""
-    if not resolved.requires_key:
+    if not resolved.provider_settings.requires_key:
         return True
+    values = resolved.provider_settings.model_dump()
     return all(
-        resolved.credential(field.key)
+        values.get(field.key)
         for field in credential_fields(resolved.kind)
         if field.required
     )

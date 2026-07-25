@@ -12,18 +12,18 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from ..config import ProviderConfig
-from ..engines import Engine, EngineStatus
+from ..config import FailurePolicy
+from ..engines import Engine, EngineStatus, ProviderSettings
 
 UTC = timezone.utc
 
 
-def min_interval(config: ProviderConfig) -> float:
+def min_interval(settings: ProviderSettings) -> float:
     """Seconds between requests implied by the provider's rate limit."""
-    if config.rps:
-        return 1.0 / config.rps
-    if config.rpm:
-        return 60.0 / config.rpm
+    if settings.rps:
+        return 1.0 / settings.rps
+    if settings.rpm:
+        return 60.0 / settings.rpm
     return 0.0
 
 
@@ -32,7 +32,8 @@ class ProviderRuntime:
     """Shared per-account state: every engine on the provider throttles,
     queues, and exhausts quota together."""
 
-    config: ProviderConfig
+    id: str
+    settings: ProviderSettings
     min_interval: float
     next_allowed: float = 0.0
     quota_resets_at: datetime | None = None
@@ -46,7 +47,7 @@ class ProviderRuntime:
     @property
     def semaphore(self) -> asyncio.Semaphore:
         if self._semaphore is None:
-            self._semaphore = asyncio.Semaphore(self.config.max_concurrency)
+            self._semaphore = asyncio.Semaphore(self.settings.max_concurrency)
         return self._semaphore
 
     @property
@@ -80,6 +81,10 @@ class ProviderRuntime:
 class EngineRuntime:
     engine: Engine
     provider: ProviderRuntime
+    # Resolved engine > provider > global, so each lane can be tuned to how it
+    # actually fails: a slow local model wants fewer retries, a 50-a-day free
+    # tier a much longer cooldown.
+    policy: FailurePolicy = field(default_factory=FailurePolicy)
     consecutive_failures: int = 0
     cooldown_until: datetime | None = None
     last_error: str | None = None

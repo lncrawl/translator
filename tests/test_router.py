@@ -13,10 +13,11 @@ from translator.schemas import TranslateHtmlRequest, TranslateTextRequest
 
 
 def make_router(*engines: FakeEngine, config=None, retries: int = 0) -> Router:
-    config = config or make_config(*(e.id for e in engines))
-    return Router(
-        list(engines), config, transient_retries=retries, backoff_base_seconds=0
+    config = config or make_config(
+        *(e.id for e in engines),
+        failure_policy={"transient_retries": retries, "backoff_base_seconds": 0},
     )
+    return Router(list(engines), config)
 
 
 class GatedEngine(FakeEngine):
@@ -169,13 +170,7 @@ async def test_unknown_engine_override_rejected() -> None:
 async def test_disabled_engine_override_rejected() -> None:
     config = make_config(
         "a",
-        extra_engines=[
-            {
-                "id": "off",
-                "kind": "openai",
-                "base_url": "http://fake",
-            }
-        ],
+        extra_engines=[{"id": "off", "provider": "a", "enabled": False}],
     )
     router = make_router(FakeEngine("a"), config=config)
     with pytest.raises(ApiError) as excinfo:
@@ -278,7 +273,13 @@ async def test_quota_error_benches_whole_provider() -> None:
     # Two models on one account: exhausting quota via one blocks the other.
     config = AppConfig.model_validate(
         {
-            "providers": [{"id": "p", "kind": "openai", "base_url": "http://x"}],
+            "providers": [
+                {
+                    "id": "p",
+                    "kind": "openai",
+                    "settings": {"base_url": "http://x"},
+                }
+            ],
             "engines": [
                 {"id": "a", "provider": "p"},
                 {"id": "b", "provider": "p"},
@@ -290,7 +291,7 @@ async def test_quota_error_benches_whole_provider() -> None:
         "a", errors=[EngineError("q", ErrorKind.QUOTA, retry_after_seconds=120)]
     )
     b = FakeEngine("b")
-    router = Router([a, b], config, transient_retries=0, backoff_base_seconds=0)
+    router = Router([a, b], config)
     with pytest.raises(ApiError) as excinfo:
         await pipeline.translate_text(router, TranslateTextRequest(texts=["hi"]))
     assert excinfo.value.status_code == 503
@@ -303,8 +304,16 @@ async def test_repeated_failures_bench_engine_for_cooldown() -> None:
     config = AppConfig.model_validate(
         {
             "providers": [
-                {"id": "a", "kind": "openai", "base_url": "http://x"},
-                {"id": "b", "kind": "openai", "base_url": "http://x"},
+                {
+                    "id": "a",
+                    "kind": "openai",
+                    "settings": {"base_url": "http://x"},
+                },
+                {
+                    "id": "b",
+                    "kind": "openai",
+                    "settings": {"base_url": "http://x"},
+                },
             ],
             "engines": [
                 {"id": "a", "provider": "a"},
@@ -322,7 +331,7 @@ async def test_repeated_failures_bench_engine_for_cooldown() -> None:
         ],
     )
     b = FakeEngine("b")
-    router = Router([a, b], config, transient_retries=0, backoff_base_seconds=0)
+    router = Router([a, b], config)
 
     # Two failing requests reach the threshold; both fall back to b.
     for _ in range(2):
@@ -340,7 +349,7 @@ async def test_repeated_failures_bench_engine_for_cooldown() -> None:
 async def test_success_resets_failure_count() -> None:
     config = make_config("a")
     a = FakeEngine("a", errors=[EngineError("boom", ErrorKind.TRANSIENT)])
-    router = Router([a], config, transient_retries=0, backoff_base_seconds=0)
+    router = Router([a], config)
     with pytest.raises(ApiError):
         await pipeline.translate_text(router, TranslateTextRequest(texts=["hi"]))
     resp = await pipeline.translate_text(router, TranslateTextRequest(texts=["hi"]))
@@ -355,3 +364,33 @@ async def test_glossary_unsupported_engine_warns() -> None:
         router, TranslateHtmlRequest(html="<p>萧炎</p>", glossary={"萧炎": "Xiao Yan"})
     )
     assert any("glossary not applied" in w for w in resp.warnings)
+
+
+async def test_engine_policy_overrides_provider_and_global() -> None:
+    # engine > provider > global: the engine asks for one retry where the
+    # provider says none and the global default says two.
+    config = make_config(
+        "a",
+        failure_policy={"transient_retries": 2, "backoff_base_seconds": 0},
+    )
+    config.provider("a").settings["failure_policy"] = {"transient_retries": 0}
+    config.engine("a").settings["failure_policy"] = {"transient_retries": 1}
+    a = FakeEngine("a", errors=[EngineError("blip", ErrorKind.TRANSIENT)])
+    router = Router([a], config)
+    resp = await pipeline.translate_text(router, TranslateTextRequest(texts=["hi"]))
+    assert resp.engine == "a"
+    assert len(a.segment_calls) == 2  # one failure + one retry
+
+
+async def test_provider_policy_applies_when_engine_is_silent() -> None:
+    config = make_config(
+        "a",
+        failure_policy={"transient_retries": 2, "backoff_base_seconds": 0},
+    )
+    config.provider("a").settings["failure_policy"] = {"transient_retries": 0}
+    a = FakeEngine("a", errors=[EngineError("blip", ErrorKind.TRANSIENT)])
+    router = Router([a], config)
+    with pytest.raises(ApiError) as excinfo:
+        await pipeline.translate_text(router, TranslateTextRequest(texts=["hi"]))
+    assert excinfo.value.status_code == 502
+    assert len(a.segment_calls) == 1  # no retry at all

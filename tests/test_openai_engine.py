@@ -11,7 +11,7 @@ from translator.engines.openai_compat import OpenAICompatEngine
 
 
 def make_engine(handler: httpx.MockTransport) -> OpenAICompatEngine:
-    config = make_resolved(model="test-model")
+    config = make_resolved(engine_settings={"model": "test-model"})
     engine = OpenAICompatEngine(config)
     engine._client = httpx.AsyncClient(base_url="http://fake/v1", transport=handler)
     return engine
@@ -50,8 +50,10 @@ async def test_extra_body_merged_into_request() -> None:
         return completion('["hi"]')
 
     config = make_resolved(
-        model="test-model",
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        engine_settings={
+            "model": "test-model",
+            "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+        },
     )
     engine = OpenAICompatEngine(config)
     engine._client = httpx.AsyncClient(

@@ -9,12 +9,13 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, model_validator
 
 from ...config import EngineKind, ProviderConfig
+from ...config.legacy import hoist_provider_settings
 from ...errors import ApiError
 from ..deps import StoreDep
-from ..editing import apply_edit
+from ..editing import apply_edit, merge_patch
 from ..secrets import redact_provider, resolve_provider_secrets
 
 router = APIRouter(tags=["providers"])
@@ -22,14 +23,9 @@ router = APIRouter(tags=["providers"])
 
 class ProviderPatch(BaseModel):
     kind: EngineKind | None = None
-    base_url: str | None = None
-    api_key: str | None = None
-    options: dict[str, str] | None = None
-    requires_key: bool | None = None
-    rps: float | None = Field(default=None, gt=0)
-    rpm: float | None = Field(default=None, gt=0)
-    max_concurrency: int | None = Field(default=None, ge=1)
-    monthly_chars: int | None = Field(default=None, gt=0)
+    settings: dict[str, Any] | None = None
+
+    _hoist = model_validator(mode="before")(hoist_provider_settings)
 
 
 @router.post("/providers", status_code=201)
@@ -57,7 +53,7 @@ async def update_provider(
     def edit(data: dict[str, Any]) -> None:
         for entry in data["providers"]:
             if entry["id"] == provider_id:
-                entry.update(changes)
+                merge_patch(entry, changes)
 
     updated = (await apply_edit(store, edit)).provider(provider_id)
     assert updated is not None

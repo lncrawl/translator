@@ -7,16 +7,26 @@ are config-only.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 import httpx
 
-from ..config import ResolvedEngine
 from ..schemas import HtmlContext
 from ..text.html import count_cjk, repair_untagged_output, strip_text, tag_names
 from ..text.languages import base as base_lang
 from . import prompts
-from .base import CredentialField, EngineError, ErrorKind, HtmlResult, HtmlSupport
+from .base import (
+    EngineError,
+    EngineSettings,
+    ErrorKind,
+    HtmlResult,
+    HtmlSupport,
+    ProviderSettings,
+    ResolvedEngine,
+    credential,
+    narrow,
+    setting,
+)
 from .http import HttpEngine
 
 # A 429 asking for a short pause is throttling; a long one is quota.
@@ -26,33 +36,61 @@ _THROTTLE_CUTOFF_SECONDS = 60
 _CJK_TARGETS = {"zh", "ja", "ko"}
 
 
+class OpenAIProviderSettings(ProviderSettings):
+    base_url: str = setting(
+        "Base URL",
+        secret=False,
+        default=...,  # mandatory: there is no sensible endpoint to guess
+        description="Root of the OpenAI-compatible API, e.g. https://host/v1",
+        min_length=1,
+    )
+    api_key: str | None = credential(
+        "API key", secret=True, description="Bearer token for the provider"
+    )
+
+
+class OpenAIEngineSettings(EngineSettings):
+    model: str | None = setting(
+        "Model", secret=False, description="Model id as the provider names it"
+    )
+    extra_body: dict[str, Any] = setting(
+        "Extra request body",
+        secret=False,
+        default_factory=dict,
+        description="Merged into every chat completion request, e.g."
+        ' {"chat_template_kwargs": {"enable_thinking": false}}',
+    )
+
+
 class OpenAICompatEngine(HttpEngine):
     KIND = "openai"
     HTML = HtmlSupport.PROMPT
     READ_TIMEOUT = 900.0  # a local CPU model can take ~15 min for one chapter
-    CREDENTIALS: ClassVar[list[CredentialField]] = [
-        CredentialField(
-            "api_key", "API key", description="Bearer token for the provider"
-        )
-    ]
+    PROVIDER_SETTINGS = OpenAIProviderSettings
+    ENGINE_SETTINGS = OpenAIEngineSettings
 
     def __init__(self, config: ResolvedEngine) -> None:
-        if not config.base_url:
-            raise ValueError(f"engine {config.id!r}: openai kind requires base_url")
+        provider = narrow(config.provider_settings, OpenAIProviderSettings)
         headers = {}
-        if config.api_key:
-            headers["Authorization"] = f"Bearer {config.api_key}"
-        super().__init__(config, base_url=config.base_url, headers=headers)
+        if provider.api_key:
+            headers["Authorization"] = f"Bearer {provider.api_key}"
+        super().__init__(config, base_url=provider.base_url, headers=headers)
+        self.provider = provider
+        self.settings = narrow(config.engine_settings, OpenAIEngineSettings)
+
+    @classmethod
+    def display_model(cls, config: ResolvedEngine) -> str | None:
+        return narrow(config.engine_settings, OpenAIEngineSettings).model
 
     async def _chat(
         self, messages: list[dict[str, str]], temperature: float = 0.3
     ) -> str:
         payload: dict[str, Any] = {
-            "model": self.config.model,
+            "model": self.settings.model,
             "messages": messages,
             "temperature": temperature,
             "stream": False,
-            **self.config.extra_body,
+            **self.settings.extra_body,
         }
         try:
             response = await self._client.post("/chat/completions", json=payload)

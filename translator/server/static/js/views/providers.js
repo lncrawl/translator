@@ -56,13 +56,11 @@ export function onStore() {
   });
   cardsBox.replaceChildren(
     ...sorted.map((provider) => {
+      const settings = provider.settings || {};
       const limits = [
-        provider.rps ? `${provider.rps} req/s` : null,
-        provider.rpm ? `${provider.rpm} req/min` : null,
-        `concurrency ${provider.max_concurrency}`,
-        provider.monthly_chars
-          ? `${provider.monthly_chars.toLocaleString()} chars/mo`
-          : null,
+        settings.rps ? `${settings.rps} req/s` : null,
+        settings.rpm ? `${settings.rpm} req/min` : null,
+        `concurrency ${settings.max_concurrency ?? 1}`,
       ]
         .filter(Boolean)
         .join(" · ");
@@ -90,8 +88,8 @@ export function onStore() {
           el("span", { class: "chip" }, provider.kind),
           keyPill(provider),
         ),
-        provider.base_url
-          ? el("div", { class: "url" }, provider.base_url)
+        settings.base_url
+          ? el("div", { class: "url" }, settings.base_url)
           : null,
         el("div", { class: "facts" }, limits),
         el(

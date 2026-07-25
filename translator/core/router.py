@@ -16,7 +16,15 @@ from datetime import datetime, timedelta
 from typing import Literal, TypeVar
 
 from ..config import AppConfig
-from ..engines import Engine, EngineError, EngineStatus, ErrorKind, build_engine
+from ..engines import (
+    Engine,
+    EngineError,
+    EngineStatus,
+    ErrorKind,
+    build_engine,
+    resolve,
+    resolve_all,
+)
 from ..engines import is_available as engine_is_available
 from ..errors import ApiError
 from .limits import UTC, EngineRuntime, ProviderRuntime, min_interval
@@ -33,7 +41,7 @@ T = TypeVar("T")
 def build_router(config: AppConfig) -> Router:
     """A router over every engine in ``config`` that is enabled and keyed."""
     engines = []
-    for resolved in config.resolved_engines():
+    for resolved in resolve_all(config):
         if not engine_is_available(resolved):
             logger.warning(
                 "engine %s disabled: %s",
@@ -54,41 +62,28 @@ def _pair_label(source_lang: str | None, target_lang: str) -> str:
 
 
 class Router:
-    def __init__(
-        self,
-        engines: list[Engine],
-        config: AppConfig,
-        *,
-        transient_retries: int | None = None,
-        backoff_base_seconds: float | None = None,
-    ) -> None:
-        policy = config.failure_policy
+    def __init__(self, engines: list[Engine], config: AppConfig) -> None:
         self._config = config
-        self._transient_retries = (
-            policy.transient_retries if transient_retries is None else transient_retries
-        )
-        self._backoff_base = (
-            policy.backoff_base_seconds
-            if backoff_base_seconds is None
-            else backoff_base_seconds
-        )
-        self._failure_threshold = policy.failure_threshold
-        self._cooldown_seconds = policy.cooldown_seconds
         self._providers: dict[str, ProviderRuntime] = {}
         self._runtimes: dict[str, EngineRuntime] = {}
         for engine in engines:
-            resolved = config.resolved(engine.id)
+            resolved = resolve(config, engine.id)
             assert resolved is not None
-            provider_config = config.provider(resolved.provider_id)
-            assert provider_config is not None
-            provider = self._providers.get(provider_config.id)
+            provider_settings = resolved.provider_settings
+            provider = self._providers.get(resolved.provider_id)
             if provider is None:
                 provider = ProviderRuntime(
-                    config=provider_config,
-                    min_interval=min_interval(provider_config),
+                    id=resolved.provider_id,
+                    settings=provider_settings,
+                    min_interval=min_interval(provider_settings),
                 )
-                self._providers[provider_config.id] = provider
-            self._runtimes[engine.id] = EngineRuntime(engine=engine, provider=provider)
+                self._providers[resolved.provider_id] = provider
+            policy = resolved.engine_settings.failure_policy.over(
+                provider_settings.failure_policy.over(config.failure_policy)
+            )
+            self._runtimes[engine.id] = EngineRuntime(
+                engine=engine, provider=provider, policy=policy
+            )
 
     def status(self, engine_id: str) -> EngineStatus | None:
         runtime = self._runtimes.get(engine_id)
@@ -108,7 +103,7 @@ class Router:
         runtime = self._runtimes.get(engine_id)
         if runtime is None:
             return None
-        total = runtime.provider.config.max_concurrency
+        total = runtime.provider.settings.max_concurrency
         free = max(0, total - runtime.provider.active_requests)
         return free, total
 
@@ -258,20 +253,20 @@ class Router:
             )
             logger.warning(
                 "provider %s quota exhausted (via engine %s): %s",
-                runtime.provider.config.id,
+                runtime.provider.id,
                 runtime.engine.id,
                 exc,
             )
             return True
         runtime.consecutive_failures += 1
-        if runtime.consecutive_failures >= self._failure_threshold:
+        if runtime.consecutive_failures >= runtime.policy.failure_threshold:
             runtime.cooldown_until = datetime.now(UTC) + timedelta(
-                seconds=self._cooldown_seconds
+                seconds=runtime.policy.cooldown_seconds
             )
             logger.warning(
                 "engine %s benched for %.0fs after %d consecutive failures: %s",
                 runtime.engine.id,
-                self._cooldown_seconds,
+                runtime.policy.cooldown_seconds,
                 runtime.consecutive_failures,
                 exc,
             )
@@ -282,7 +277,7 @@ class Router:
     async def _run_on_engine(
         self, runtime: EngineRuntime, fn: Callable[[Engine], Awaitable[T]]
     ) -> T:
-        attempts = 1 + self._transient_retries
+        attempts = 1 + runtime.policy.transient_retries
         for attempt in range(attempts):
             async with runtime.provider.semaphore:
                 runtime.provider.active_requests += 1
@@ -292,7 +287,7 @@ class Router:
                 except EngineError as exc:
                     if exc.kind is not ErrorKind.TRANSIENT or attempt == attempts - 1:
                         raise
-                    delay = self._backoff_base * (2**attempt)
+                    delay = runtime.policy.backoff_base_seconds * (2**attempt)
                     logger.info(
                         "engine %s transient error (attempt %d/%d): %s",
                         runtime.engine.id,

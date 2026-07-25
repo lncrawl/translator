@@ -21,10 +21,17 @@ from typing import Any
 
 import httpx
 
-from ..config import ResolvedEngine
 from ..schemas import HtmlContext
 from ..text.languages import base as base_lang
-from .base import EngineError, ErrorKind, HtmlResult, HtmlSupport
+from .base import (
+    EngineError,
+    EngineSettings,
+    ErrorKind,
+    HtmlResult,
+    HtmlSupport,
+    ResolvedEngine,
+    setting,
+)
 from .http import HttpEngine
 
 _AUTH_URL = "https://edge.microsoft.com/translate/auth"
@@ -48,21 +55,31 @@ def lang_code(tag: str) -> str:
     return _CODES.get(tag) or base_lang(tag)
 
 
+class BingEngineSettings(EngineSettings):
+    # The service caps a request at 50k characters across the whole array;
+    # declaring the ceiling here means config cannot ask for more and the
+    # dashboard shows the limit, instead of a silent clamp at call time.
+    max_input_tokens: int | None = setting(
+        "Max input tokens",
+        secret=False,
+        default=_MAX_INPUT_TOKENS,
+        gt=0,
+        le=_MAX_INPUT_TOKENS,
+        description="Bounded by what Microsoft Translator accepts per request.",
+    )
+
+
 class BingEngine(HttpEngine):
     KIND = "bing"
     HTML = HtmlSupport.NATIVE
     READ_TIMEOUT = 120.0
+    ENGINE_SETTINGS = BingEngineSettings
 
     def __init__(self, config: ResolvedEngine) -> None:
         super().__init__(config)
         self._token: str = ""
         self._token_expiry: float = float("-inf")
         self._lazy_token_lock: asyncio.Lock | None = None
-
-    @classmethod
-    def max_input_tokens(cls, config: ResolvedEngine) -> int | None:
-        """The service's own request cap bounds whatever config asks for."""
-        return min(config.max_input_tokens or _MAX_INPUT_TOKENS, _MAX_INPUT_TOKENS)
 
     @property
     def _token_lock(self) -> asyncio.Lock:

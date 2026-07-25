@@ -1,18 +1,39 @@
 import { api } from "./api.js";
 
-// Server-side sentinel for stored secrets: responses replace every saved
-// api_key/secret option with this value, and sending it back means "keep
-// the stored secret". Secrets are never readable through the API.
+// Sentinel for stored secrets: responses replace every saved secret with this
+// value, and sending it back means "keep the stored secret". Secrets are never
+// readable through the API. The server confirms it in GET /schema; this is the
+// value used until that first fetch lands.
 export const SECRET_PLACEHOLDER = "__secret__";
 
+// GET /schema, generated from the server's own models. Forms render from it,
+// so field lists live in exactly one place.
 export const store = {
   config: null,
   engines: [],
   health: null,
-  credentialSchema: {},
+  schema: {
+    provider: {},
+    engine: {},
+    failure_policy: {},
+    kinds: [],
+    lanes: [],
+  },
   reachable: true,
   updatedAt: null,
 };
+
+export function kindSchema(kind) {
+  return store.schema.kinds.find((k) => k.kind === kind) || null;
+}
+
+export function kindNames() {
+  return store.schema.kinds.map((k) => k.kind);
+}
+
+export function lanes() {
+  return store.schema.lanes;
+}
 
 const listeners = new Set();
 
@@ -30,12 +51,12 @@ export async function refreshAll() {
     api("/config"),
     api("/engines"),
     api("/health"),
-    api("/credential-schema"),
+    api("/schema"),
   ]);
   if (config.status === "fulfilled") store.config = config.value;
   if (engines.status === "fulfilled") store.engines = engines.value.engines;
   if (health.status === "fulfilled") store.health = health.value;
-  if (schema.status === "fulfilled") store.credentialSchema = schema.value;
+  if (schema.status === "fulfilled") store.schema = schema.value;
   store.reachable = health.status === "fulfilled";
   store.updatedAt = new Date();
   notify();
@@ -58,12 +79,13 @@ export function inactiveEngineIds() {
   );
 }
 
+// Mirrors the server's availability gate (engines.registry.is_configured),
+// using the credential declarations the server sends.
 export function keyState(provider) {
-  const fields = store.credentialSchema[provider.kind] || [];
-  if (fields.length === 0 || provider.requires_key === false)
+  const settings = provider.settings || {};
+  const fields = kindSchema(provider.kind)?.credentials || [];
+  if (fields.length === 0 || settings.requires_key === false)
     return "none-needed";
-  const value = (f) =>
-    f.key === "api_key" ? provider.api_key : provider.options?.[f.key];
   const required = fields.filter((f) => f.required);
-  return required.every((f) => value(f)) ? "set" : "missing";
+  return required.every((f) => settings[f.key]) ? "set" : "missing";
 }

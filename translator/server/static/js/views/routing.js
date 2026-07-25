@@ -1,11 +1,13 @@
-import { inactiveEngineIds, mutate, store } from "../store.js";
+import { inactiveEngineIds, lanes, mutate, store } from "../store.js";
 import { busy, dropdown, el, toast } from "../ui.js";
 
 export const id = "routing";
 export const title = "Routing lanes";
 export const glyph = "routing";
 
-const LANE_LABELS = { chapter: "Chapter lane", short_text: "Short-text lane" };
+// Lane names and their labels both come from the served routing schema.
+const laneLabel = (lane) =>
+  store.schema.routing?.properties?.[lane]?.title || lane;
 
 let draft = null;
 let draftFrom = null;
@@ -155,7 +157,7 @@ function render() {
   const inactive = inactiveEngineIds();
 
   lanesBox.replaceChildren(
-    ...["chapter", "short_text"].map((lane) => {
+    ...lanes().map((lane) => {
       const ids = draft[lane].filter((i) => !inactive.has(i));
       const hidden = draft[lane].filter((i) => inactive.has(i));
       const commit = () => {
@@ -172,7 +174,7 @@ function render() {
         .map((e) => e.id)
         .filter((i) => !draft[lane].includes(i) && !inactive.has(i));
       const addSelect = dropdown({
-        ariaLabel: `Add engine to ${LANE_LABELS[lane]}`,
+        ariaLabel: `Add engine to ${laneLabel(lane)}`,
         options: [
           { value: "", label: "add engine…" },
           ...unused.map((i) => ({ value: i, label: i })),
@@ -195,7 +197,7 @@ function render() {
       return el(
         "div",
         { class: "lane" },
-        el("h3", { style: "margin-top:0" }, LANE_LABELS[lane]),
+        el("h3", { style: "margin-top:0" }, laneLabel(lane)),
         ids.length
           ? list
           : el("p", { class: "meta" }, "empty — nothing routes here"),

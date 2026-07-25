@@ -11,20 +11,22 @@ from translator.server import create_app
 
 # "llm" requires a key that is not set; "local" declares it needs none.
 BOOT_CONFIG_DATA = {
-    "engines": [
-        {
-            "id": "llm",
-            "kind": "openai",
-            "base_url": "http://fake",
-            "model": "some-model",
-            "max_input_tokens": 100000,
-        },
+    "providers": [
+        {"id": "llm", "kind": "openai", "settings": {"base_url": "http://fake"}},
         {
             "id": "local",
             "kind": "openai",
-            "base_url": "http://localhost:1",
-            "requires_key": False,
+            "settings": {"base_url": "http://localhost:1", "requires_key": False},
         },
+    ],
+    "engines": [
+        {
+            "id": "llm",
+            "provider": "llm",
+            "max_input_tokens": 100000,
+            "settings": {"model": "some-model"},
+        },
+        {"id": "local", "provider": "local"},
     ],
     "routing": {"chapter": ["llm", "local"], "short_text": ["llm", "local"]},
 }
@@ -33,7 +35,7 @@ BOOT_CONFIG = AppConfig.model_validate(BOOT_CONFIG_DATA)
 
 def fake_client(*engines: FakeEngine, config: AppConfig | None = None) -> TestClient:
     config = config or make_config(*(e.id for e in engines))
-    router = Router(list(engines), config, transient_retries=0, backoff_base_seconds=0)
+    router = Router(list(engines), config)
     return TestClient(create_app(config, router))
 
 
@@ -80,7 +82,7 @@ def test_engines_listing_with_key_set(monkeypatch: pytest.MonkeyPatch) -> None:
     keyed = AppConfig.model_validate(BOOT_CONFIG_DATA)
     provider = keyed.provider("llm")
     assert provider is not None
-    provider.api_key = "k"
+    provider.settings["api_key"] = "k"
     client = TestClient(create_app(keyed))
     by_id = {e["id"]: e for e in client.get("/engines").json()["engines"]}
     assert by_id["llm"]["status"] == "ok"
@@ -167,7 +169,7 @@ def test_unexpected_error_returns_json_envelope(
 ) -> None:
     engine = FakeEngine("fake", errors=[RuntimeError("boom"), RuntimeError("boom")])
     config = make_config("fake")
-    router = Router([engine], config, transient_retries=0, backoff_base_seconds=0)
+    router = Router([engine], config)
     client = TestClient(create_app(config, router), raise_server_exceptions=False)
     resp = client.post("/translate/text", json={"texts": ["hi"]})
     assert resp.status_code == 500

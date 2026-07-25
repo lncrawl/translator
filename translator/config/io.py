@@ -9,8 +9,9 @@ from pathlib import Path
 import yaml
 
 from .defaults import DEFAULT_CONFIG
+from .legacy import looks_legacy
 from .models import AppConfig
-from .overlay import apply_overlay, build_overlay, looks_legacy
+from .overlay import apply_overlay, build_overlay
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     (see ``overlay``): its entries merge onto the defaults by id, so newly
     added or updated default providers/engines reach the install automatically
     instead of the file going stale. Legacy flat configs are loaded standalone.
+
+    Structural validation only: per-kind ``settings`` are checked by
+    :func:`translator.engines.validate_config`, which ``ConfigStore`` runs.
     """
     resolved = resolve_config_path(path)
     if not resolved.exists():

@@ -8,12 +8,53 @@ in ``translator.schemas``.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from ..config import EngineKind
+from ..engines import CredentialField
 from ..schemas import TextItem
+
+
+class KindSchema(BaseModel):
+    """Everything the dashboard needs to edit one engine kind."""
+
+    kind: EngineKind
+    html: str
+    glossary: bool
+    credentials: list[CredentialField]
+    provider_settings: dict[str, Any] = Field(
+        description="JSON Schema of the kind's provider settings",
+    )
+    engine_settings: dict[str, Any] = Field(
+        description="JSON Schema of the kind's engine settings",
+    )
+
+
+class ConfigSchema(BaseModel):
+    """The editing contract: shared field schemas plus the per-kind ones.
+
+    Generated from the Pydantic models, so the forms cannot drift from what
+    the server accepts.
+    """
+
+    provider: dict[str, Any] = Field(
+        description="JSON Schema of the settings every provider kind shares",
+    )
+    engine: dict[str, Any] = Field(
+        description="JSON Schema of the settings every engine kind shares",
+    )
+    engine_entry: dict[str, Any] = Field(
+        description="JSON Schema of an engine's fields outside its settings",
+    )
+    failure_policy: dict[str, Any]
+    routing: dict[str, Any] = Field(
+        description="JSON Schema of the routing lanes; titles are lane labels",
+    )
+    kinds: list[KindSchema]
+    lanes: list[str]
+    secret_placeholder: str
 
 
 class DetectRequest(BaseModel):

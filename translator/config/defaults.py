@@ -24,68 +24,82 @@ DEFAULT_CONFIG: dict[str, Any] = {
         {
             "id": "bing",
             "kind": "bing",
-            "requires_key": False,
-            "rps": 3,
-            "max_concurrency": 6,
+            "settings": {
+                "rps": 3,
+                "max_concurrency": 6,
+            },
         },
         # deepl.com/pro-api — NMT fallback for short strings; HTML-native.
         {
             "id": "deepl",
             "kind": "deepl",
-            "monthly_chars": 500_000,
-            "max_concurrency": 6,
+            "settings": {
+                "max_concurrency": 6,
+            },
         },
         # Local OpenAI-compatible LLM server (Docker Model Runner, llama.cpp,
         # Ollama, LM Studio etc.)
         {
             "id": "local-llm",
             "kind": "openai",
-            "base_url": "http://localhost:12434/engines/v1",
-            "requires_key": False,
-            "max_concurrency": 1,
+            "settings": {
+                "base_url": "http://localhost:12434/engines/v1",
+                "requires_key": False,
+                "max_concurrency": 1,
+            },
         },
         # aistudio.google.com — free, Google account only; ~1,500 req/day.
         {
             "id": "gemini",
             "kind": "openai",
-            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-            "rpm": 10,
-            "max_concurrency": 8,
+            "settings": {
+                "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                "rpm": 10,
+                "max_concurrency": 8,
+            },
         },
         # console.groq.com — free, no card, very fast; small token/day cap, so
         # it burns out quickly on long novels but is a good burst/short lane.
         {
             "id": "groq",
             "kind": "openai",
-            "base_url": "https://api.groq.com/openai/v1",
-            "rpm": 30,
-            "max_concurrency": 8,
+            "settings": {
+                "base_url": "https://api.groq.com/openai/v1",
+                "rpm": 30,
+                "max_concurrency": 8,
+            },
         },
         # openrouter.ai — 50 req/day free; model lineup churns monthly.
         {
             "id": "openrouter",
             "kind": "openai",
-            "base_url": "https://openrouter.ai/api/v1",
-            "rpm": 20,
-            "max_concurrency": 8,
+            "settings": {
+                "base_url": "https://openrouter.ai/api/v1",
+                "rpm": 20,
+                "max_concurrency": 8,
+            },
         },
         # cloud.sambanova.ai — free API key, no card; very fast RDU inference.
         # 50 req/day free, 1,000/day after a one-time $10 top-up.
         {
             "id": "sambanova",
             "kind": "openai",
-            "base_url": "https://api.sambanova.ai/v1",
-            "rpm": 10,
-            "max_concurrency": 4,
+            "settings": {
+                "base_url": "https://api.sambanova.ai/v1",
+                "rpm": 10,
+                "max_concurrency": 4,
+            },
         },
         # chutes.ai — no card; hosts open DeepSeek / Qwen / GLM weights, strong
         # on CJK. OpenAI-compatible; free lineup varies.
         {
             "id": "chutes",
             "kind": "openai",
-            "base_url": "https://llm.chutes.ai/v1",
-            "rpm": 30,
-            "max_concurrency": 8,
+            "settings": {
+                "base_url": "https://llm.chutes.ai/v1",
+                "rpm": 30,
+                "max_concurrency": 8,
+            },
         },
     ],
     "engines": [
@@ -96,38 +110,48 @@ DEFAULT_CONFIG: dict[str, Any] = {
         {
             "id": "gemini-flash-latest",
             "provider": "gemini",
-            "model": "gemini-flash-latest",
-            "max_input_tokens": 250_000,
+            "settings": {
+                "model": "gemini-flash-latest",
+                "max_input_tokens": 250_000,
+            },
         },
         {
             "id": "gemini-flash-lite-latest",
             "provider": "gemini",
-            "model": "gemini-flash-lite-latest",
-            "max_input_tokens": 250_000,
+            "settings": {
+                "model": "gemini-flash-lite-latest",
+                "max_input_tokens": 250_000,
+            },
         },
         {
             "id": "groq-oss-120b",
             "provider": "groq",
-            "model": "openai/gpt-oss-120b",
-            "max_input_tokens": 8_000,
+            "settings": {
+                "model": "openai/gpt-oss-120b",
+                "max_input_tokens": 8_000,
+            },
         },
         {
             "id": "gpt-oss-120b-nitro",
             "provider": "openrouter",
-            "model": "openai/gpt-oss-120b:nitro",
-            "max_input_tokens": 8_000,
+            "settings": {
+                "model": "openai/gpt-oss-120b:nitro",
+                "max_input_tokens": 8_000,
+            },
         },
         # Disabled example: Pull this model in Docker Desktop first and enable it.
         {
             "id": "qwen3.5-4B",
             "provider": "local-llm",
-            "model": "docker.io/ai/qwen3.5:4B-UD-Q4_K_XL",
             "enabled": False,
-            "max_input_tokens": 8_000,
-            "chunk_tokens": 2_000,
-            "extra_body": {
-                "chat_template_kwargs": {
-                    "enable_thinking": False,
+            "settings": {
+                "model": "docker.io/ai/qwen3.5:4B-UD-Q4_K_XL",
+                "max_input_tokens": 8_000,
+                "chunk_tokens": 2_000,
+                "extra_body": {
+                    "chat_template_kwargs": {
+                        "enable_thinking": False,
+                    },
                 },
             },
         },

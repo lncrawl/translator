@@ -6,6 +6,12 @@ routing tweaks) plus explicit removals. Defaults always come from code and
 merge underneath by id, so new or changed defaults reach existing installs
 without the file going stale. :func:`apply_overlay` merges on load;
 :func:`build_overlay` diffs on save.
+
+Merge depth is exactly one level into ``settings`` — and the diff matches it
+key by key. The two must agree or ``build_overlay ∘ apply_overlay`` stops
+round-tripping. Values *inside* ``settings`` (``extra_body`` included) replace
+wholesale: they are opaque values, not namespaces, and deep-merging them would
+leave no way to remove a key a default had set.
 """
 
 from __future__ import annotations
@@ -16,24 +22,9 @@ from typing import Any
 from pydantic import BaseModel
 
 from .defaults import DEFAULT_CONFIG
-from .models import LANE_NAMES, LEGACY_PROVIDER_FIELDS, AppConfig
+from .models import LANE_NAMES, AppConfig
 
 logger = logging.getLogger(__name__)
-
-
-def looks_legacy(data: dict[str, Any]) -> bool:
-    """A pre-overlay flat config: an engine carrying provider-level fields
-    (base_url/kind/...) inline instead of a ``provider`` reference. Such files
-    predate the overlay format and are loaded standalone (defaults not merged)
-    for backward compatibility."""
-    engines = data.get("engines")
-    if not isinstance(engines, list):
-        return False
-    markers = set(LEGACY_PROVIDER_FIELDS)
-    return any(
-        isinstance(e, dict) and "provider" not in e and bool(markers & e.keys())
-        for e in engines
-    )
 
 
 def _by_id(entries: Any) -> dict[str, dict[str, Any]]:
@@ -43,6 +34,17 @@ def _by_id(entries: Any) -> dict[str, dict[str, Any]]:
             if isinstance(entry, dict) and "id" in entry:
                 out[entry["id"]] = entry
     return out
+
+
+def _merge_entry(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Overlay one entry onto its default, merging ``settings`` one level."""
+    merged = {**base, **patch}
+    if "settings" in base or "settings" in patch:
+        merged["settings"] = {
+            **(base.get("settings") or {}),
+            **(patch.get("settings") or {}),
+        }
+    return merged
 
 
 def _merge_providers(
@@ -57,29 +59,26 @@ def _merge_providers(
         pid = base["id"]
         if pid in removed:
             continue
-        merged.append({**base, **patches.get(pid, {})})
+        merged.append(_merge_entry(base, patches.get(pid, {})))
         seen.add(pid)
+    # An overlay-only provider is either a self-standing custom entry, which
+    # declares its ``kind``, or a sparse patch whose default has since been
+    # removed — leaving nothing to patch. Drop the latter rather than failing
+    # the whole config to load. This mirrors the rule engines already live
+    # under below, where a patch with no surviving provider is dropped.
     for pid, entry in patches.items():
-        if pid not in seen and pid not in removed:
-            merged.append(entry)
-            seen.add(pid)
-
-    # Drop providers that can no longer form a usable account: an openai
-    # provider with no base_url is a sparse overlay (e.g. just an api_key) for
-    # a default that has since been removed — its base_url is gone with the
-    # default. Prune it (and, later, its engines) instead of failing the whole
-    # config to load.
-    kept: list[dict[str, Any]] = []
-    for provider in merged:
-        if provider.get("kind", "openai") == "openai" and not provider.get("base_url"):
+        if pid in seen or pid in removed:
+            continue
+        if "kind" not in entry:
             logger.warning(
-                "dropping provider %r: openai kind without base_url"
+                "dropping provider %r: patch with no matching default"
                 " (stale overlay for a removed default?)",
-                provider.get("id"),
+                pid,
             )
             continue
-        kept.append(provider)
-    return kept
+        merged.append(entry)
+        seen.add(pid)
+    return merged
 
 
 def _merge_engines(
@@ -94,7 +93,7 @@ def _merge_engines(
         eid = base["id"]
         if eid in removed:
             continue
-        merged.append({**base, **patches.get(eid, {})})
+        merged.append(_merge_entry(base, patches.get(eid, {})))
         seen.add(eid)
     for eid, entry in patches.items():
         if eid not in seen and eid not in removed:
@@ -139,19 +138,50 @@ def apply_overlay(defaults: dict[str, Any], overlay: dict[str, Any]) -> dict[str
     return merged
 
 
+def _diff_settings(cur: dict[str, Any], bas: dict[str, Any]) -> dict[str, Any]:
+    """Settings keys that differ, over the union of both key sets.
+
+    A key the user removed is emitted as ``None`` rather than omitted —
+    omitting it would let the default merge straight back in on load.
+    """
+    diff = {key: value for key, value in cur.items() if bas.get(key) != value}
+    diff.update({key: None for key in bas if key not in cur})
+    return diff
+
+
 def _diff_entry(current: BaseModel, base: BaseModel) -> dict[str, Any]:
     """Fields of ``current`` that differ from ``base``, always keeping ``id``."""
     cur = current.model_dump(mode="json")
     bas = base.model_dump(mode="json")
     diff: dict[str, Any] = {"id": cur["id"]}
     for key, value in cur.items():
-        if key != "id" and bas.get(key) != value:
+        if key == "id":
+            continue
+        if key == "settings":
+            settings = _diff_settings(value or {}, bas.get("settings") or {})
+            if settings:
+                diff["settings"] = settings
+            continue
+        if bas.get(key) != value:
             diff[key] = value
     return diff
 
 
 def _custom(model: BaseModel) -> dict[str, Any]:
+    """A self-standing entry, written in full minus inert defaults."""
     return model.model_dump(mode="json", exclude_defaults=True, exclude_none=True)
+
+
+def _custom_provider(provider: BaseModel) -> dict[str, Any]:
+    """A custom provider always keeps its ``kind``.
+
+    ``kind`` has a default, so ``exclude_defaults`` would strip it from an
+    openai provider — and its presence is exactly what tells the merge this is
+    a self-standing entry rather than a patch for a vanished default.
+    """
+    entry = _custom(provider)
+    entry["kind"] = provider.model_dump(mode="json")["kind"]
+    return entry
 
 
 def build_overlay(config: AppConfig) -> dict[str, Any]:
@@ -166,7 +196,7 @@ def build_overlay(config: AppConfig) -> dict[str, Any]:
     for provider in config.providers:
         base = default_providers.get(provider.id)
         if base is None:
-            provider_diffs.append(_custom(provider))
+            provider_diffs.append(_custom_provider(provider))
         else:
             diff = _diff_entry(provider, base)
             if len(diff) > 1:  # more than just the id — something changed

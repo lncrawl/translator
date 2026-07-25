@@ -11,7 +11,7 @@ from translator.engines.bing import BingEngine
 
 
 def make_engine(handler: httpx.MockTransport) -> BingEngine:
-    config = make_resolved("bing", kind="bing", base_url=None, requires_key=False)
+    config = make_resolved("bing", kind="bing", requires_key=False)
     engine = BingEngine(config)
     engine._client = httpx.AsyncClient(transport=handler)
     return engine

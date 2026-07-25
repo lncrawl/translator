@@ -3,6 +3,10 @@
 Config mutations build a fresh Router from the new config, swap it in, then
 persist the config to the YAML file (when a path is configured) and retire the
 old router. In-flight requests keep the router instance they started with.
+
+This is also the narrowest waist every live config passes through, so it is
+where per-kind ``settings`` get validated — the config layer sits below
+``engines`` and cannot do it itself.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from ..config import AppConfig, save_config
+from ..engines import validate_config
 from .router import Router, build_router
 
 logger = logging.getLogger(__name__)
@@ -31,6 +36,7 @@ class ConfigStore:
     def __init__(
         self, config: AppConfig, router: Router, path: Path | None = None
     ) -> None:
+        validate_config(config)
         self.config = config
         self.router = router
         self._path = path
@@ -54,6 +60,7 @@ class ConfigStore:
         if self._lock is None:
             self._lock = asyncio.Lock()
         async with self._lock:
+            validate_config(new_config)
             new_router = build_router(new_config)
             old_router = self.router
             self.config = new_config

@@ -14,13 +14,12 @@ from translator.engines.base import ErrorKind, HtmlSupport
 def make_engine(
     handler: httpx.MockTransport,
     *,
-    options: dict[str, str] | None = None,
+    settings: dict[str, str] | None = None,
 ) -> BaiduEngine:
     config = make_resolved(
         "baidu",
         kind="baidu",
-        base_url=None,
-        options=options or {"app_id": "app123", "secret_key": "secret"},
+        provider_settings=settings or {"app_id": "app123", "secret_key": "secret"},
     )
     engine = BaiduEngine(config)
     engine._client = httpx.AsyncClient(transport=handler)
@@ -35,13 +34,12 @@ def test_capabilities_are_text_only() -> None:
 
 
 def test_availability_gated_on_options() -> None:
-    without = make_resolved("baidu", kind="baidu", base_url=None, options={})
+    without = make_resolved("baidu", kind="baidu", provider_settings={})
     assert is_available(without) is False
     with_creds = make_resolved(
         "baidu",
         kind="baidu",
-        base_url=None,
-        options={"app_id": "a", "secret_key": "s"},
+        provider_settings={"app_id": "a", "secret_key": "s"},
     )
     assert is_available(with_creds) is True
 
@@ -49,7 +47,7 @@ def test_availability_gated_on_options() -> None:
 def test_incomplete_credentials_rejected() -> None:
     # Only app_id, no secret_key.
     config = make_resolved(
-        "baidu", kind="baidu", base_url=None, options={"app_id": "app123"}
+        "baidu", kind="baidu", provider_settings={"app_id": "app123"}
     )
     with pytest.raises(ValueError):
         BaiduEngine(config)

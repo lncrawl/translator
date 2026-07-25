@@ -10,15 +10,23 @@ from __future__ import annotations
 
 import calendar
 from datetime import datetime, timezone
-from typing import Any, ClassVar
+from typing import Any
 
 import httpx
 
-from ..config import ResolvedEngine
 from ..schemas import HtmlContext
 from ..text.glossary import protect, reinject
 from ..text.languages import base as base_lang
-from .base import CredentialField, EngineError, ErrorKind, HtmlResult, HtmlSupport
+from .base import (
+    EngineError,
+    ErrorKind,
+    HtmlResult,
+    HtmlSupport,
+    ProviderSettings,
+    ResolvedEngine,
+    credential,
+    narrow,
+)
 from .http import HttpEngine
 
 UTC = timezone.utc
@@ -60,22 +68,23 @@ def _seconds_until_next_month() -> int:
     return max(3600, int(remaining))
 
 
+class DeepLProviderSettings(ProviderSettings):
+    api_key: str | None = credential(
+        "API key", secret=True, description="DeepL Free keys end in ':fx'"
+    )
+
+
 class DeepLEngine(HttpEngine):
     KIND = "deepl"
     HTML = HtmlSupport.NATIVE
-    CREDENTIALS: ClassVar[list[CredentialField]] = [
-        CredentialField(
-            "api_key", "API key", description="DeepL Free keys end in ':fx'"
-        )
-    ]
+    PROVIDER_SETTINGS = DeepLProviderSettings
 
     def __init__(self, config: ResolvedEngine) -> None:
-        key = config.api_key
+        provider = narrow(config.provider_settings, DeepLProviderSettings)
+        key = provider.api_key
         if not key:
             raise ValueError(f"engine {config.id!r}: deepl requires an api key")
-        base_url = config.base_url or (
-            _FREE_BASE_URL if key.endswith(":fx") else _PRO_BASE_URL
-        )
+        base_url = _FREE_BASE_URL if key.endswith(":fx") else _PRO_BASE_URL
         super().__init__(
             config,
             base_url=base_url,

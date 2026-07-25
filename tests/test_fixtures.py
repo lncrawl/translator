@@ -57,7 +57,7 @@ def test_full_pipeline_preserves_tag_structure(lang: str) -> None:
     html = fixture(lang)
     engine = FakeEngine("fake", html_support=HtmlSupport.NONE)
     config = make_config("fake")
-    router = Router([engine], config, transient_retries=0, backoff_base_seconds=0)
+    router = Router([engine], config)
     client = TestClient(create_app(config, router))
 
     resp = client.post("/translate/html", json={"html": html})

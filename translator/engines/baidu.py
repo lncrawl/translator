@@ -13,14 +13,23 @@ from __future__ import annotations
 
 import random
 from hashlib import md5
-from typing import Any, ClassVar
+from typing import Any
 
 import httpx
 
-from ..config import ResolvedEngine
 from ..text.glossary import protect, reinject
 from ..text.languages import base as base_lang
-from .base import CredentialField, EngineError, ErrorKind, HtmlSupport
+from .base import (
+    EngineError,
+    EngineSettings,
+    ErrorKind,
+    HtmlSupport,
+    ProviderSettings,
+    ResolvedEngine,
+    credential,
+    narrow,
+    setting,
+)
 from .http import HttpEngine
 
 _URL = "https://fanyi-api.baidu.com/api/trans/vip/translate"
@@ -60,22 +69,44 @@ def lang_code(tag: str) -> str | None:
     return _CODES.get(tag) or _CODES.get(base_lang(tag))
 
 
+class BaiduProviderSettings(ProviderSettings):
+    app_id: str | None = credential(
+        "App ID", secret=False, description="From fanyi-api.baidu.com"
+    )
+    secret_key: str | None = credential(
+        "Secret key", secret=True, description="Paired with the App ID"
+    )
+
+
+# Pydantic deep-copies a mutable default per instance, and a plain default (not
+# a factory) is what lands in the JSON Schema, so the dashboard can show the
+# catalog instead of an empty box.
+_CATALOG = sorted({base_lang(tag) for tag in _CODES})
+
+
+class BaiduEngineSettings(EngineSettings):
+    # Baidu has a finite catalog; config may narrow it but not widen it, so the
+    # catalog is the declared default rather than a coverage() override.
+    target_langs: list[str] | None = setting(
+        "Target languages",
+        secret=False,
+        default=_CATALOG,
+        description="Baidu translates into this fixed catalog; remove entries"
+        " to narrow it further.",
+    )
+
+
 class BaiduEngine(HttpEngine):
     KIND = "baidu"
     HTML = HtmlSupport.NONE
     READ_TIMEOUT = 120.0
-    CREDENTIALS: ClassVar[list[CredentialField]] = [
-        CredentialField(
-            "app_id", "App ID", secret=False, description="From fanyi-api.baidu.com"
-        ),
-        CredentialField(
-            "secret_key", "Secret key", description="Paired with the App ID"
-        ),
-    ]
+    PROVIDER_SETTINGS = BaiduProviderSettings
+    ENGINE_SETTINGS = BaiduEngineSettings
 
     def __init__(self, config: ResolvedEngine) -> None:
-        app_id = config.credential("app_id")
-        secret = config.credential("secret_key")
+        provider = narrow(config.provider_settings, BaiduProviderSettings)
+        app_id = provider.app_id
+        secret = provider.secret_key
         if not app_id or not secret:
             raise ValueError(
                 f"engine {config.id!r}: baidu requires 'app_id' and 'secret_key'"
@@ -83,14 +114,6 @@ class BaiduEngine(HttpEngine):
         super().__init__(config)
         self._app_id = app_id
         self._secret = secret
-
-    @classmethod
-    def coverage(
-        cls, config: ResolvedEngine
-    ) -> tuple[list[str] | None, list[str] | None]:
-        """Baidu has a finite catalog; config may narrow it but not widen it."""
-        catalog = sorted({base_lang(tag) for tag in _CODES})
-        return config.source_langs, config.target_langs or catalog
 
     @classmethod
     def supports_pair(

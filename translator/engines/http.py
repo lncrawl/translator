@@ -13,8 +13,7 @@ from typing import ClassVar
 
 import httpx
 
-from ..config import ResolvedEngine
-from .base import Engine, EngineError, ErrorKind
+from .base import Engine, EngineError, ErrorKind, ResolvedEngine
 
 # How much of an error body to keep in the message.
 _DETAIL_CHARS = 300

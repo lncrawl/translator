@@ -1,5 +1,5 @@
 import { el, statusPill, dataTable } from "../ui.js";
-import { store, keyState } from "../store.js";
+import { store, keyState, lanes } from "../store.js";
 
 export const id = "dashboard";
 export const title = "Dashboard";
@@ -117,18 +117,16 @@ export function onStore() {
       null,
       "#/providers",
     ),
-    stat(
-      "Chapter lane",
-      config.routing.chapter.find((i) => ready.some((e) => e.id === i)) || "—",
-      "first eligible engine",
-      "#/routing",
-    ),
-    stat(
-      "Short-text lane",
-      config.routing.short_text.find((i) => ready.some((e) => e.id === i)) ||
-        "—",
-      "first eligible engine",
-      "#/routing",
+    // One tile per lane the server declares.
+    ...lanes().map((lane) =>
+      stat(
+        store.schema.routing?.properties?.[lane]?.title || lane,
+        (config.routing[lane] || []).find((i) =>
+          ready.some((e) => e.id === i),
+        ) || "—",
+        "first eligible engine",
+        "#/routing",
+      ),
     ),
   );
 

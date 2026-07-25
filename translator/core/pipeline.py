@@ -118,7 +118,8 @@ async def translate_html(
 
 def _chunk_budget(engine: Engine) -> int:
     budget = engine.capabilities.max_input_tokens or DEFAULT_CONTEXT_TOKENS
-    return engine.config.chunk_tokens or max(1000, int(budget * SOURCE_BUDGET_FRACTION))
+    configured = engine.config.engine_settings.chunk_tokens
+    return configured or max(1000, int(budget * SOURCE_BUDGET_FRACTION))
 
 
 async def translate_in_chunks(

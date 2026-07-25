@@ -1,13 +1,6 @@
-import {
-  el,
-  toast,
-  busy,
-  numberOrNull,
-  routeParts,
-  goBack,
-  dropdown,
-} from "../ui.js";
-import { store, mutate } from "../store.js";
+import { el, toast, busy, routeParts, goBack, dropdown } from "../ui.js";
+import { store, mutate, kindSchema } from "../store.js";
+import { schemaForm } from "../schema-form.js";
 
 export const id = "engine-edit";
 export const title = "Engine";
@@ -111,47 +104,68 @@ function render() {
   const providerSelect = dropdown({
     ariaLabel: "Provider",
     options: store.config.providers.map((p) => ({ value: p.id, label: p.id })),
+    onChange: () => renderSettings(),
   });
   providerSelect.value =
     engine?.provider || params.get("provider") || providerSelect.value;
-  const modelInput = el("input", {
-    type: "text",
-    value: engine?.model || "",
-    placeholder: "glm-4.7-flash",
-  });
-  const maxTokensInput = el("input", {
-    type: "number",
-    min: "0",
-    step: "1000",
-    value: engine?.max_input_tokens ?? "",
-  });
-  const chunkTokensInput = el("input", {
-    type: "number",
-    min: "0",
-    step: "100",
-    value: engine?.chunk_tokens ?? "",
-  });
-  const enabledInput = el("input", {
-    type: "checkbox",
-    checked: (engine ? engine.enabled : true) ? "" : null,
-    style: "width:auto;margin-right:6px",
-  });
-  const extraInput = el("textarea", {
-    rows: "3",
-    placeholder: '{"chat_template_kwargs": {"enable_thinking": false}}',
-  });
-  if (engine && Object.keys(engine.extra_body || {}).length)
-    extraInput.value = JSON.stringify(engine.extra_body, null, 2);
+
+  const onChange = () => {};
+  const settingsBox = el("div", {});
+  let entry = null; // the engine's own fields (enabled)
+  let own = null; // settings this kind adds
+  let shared = null; // the EngineSettings base every kind inherits
+
+  const sharedNames = Object.keys(store.schema.engine?.properties || {});
+
+  function providerKind() {
+    return store.config.providers.find((p) => p.id === providerSelect.value)
+      ?.kind;
+  }
+
+  // An empty override box shows what it would inherit: the provider's own
+  // override where it has one, otherwise the global policy.
+  function inheritedPolicy() {
+    const fromProvider =
+      store.config.providers.find((p) => p.id === providerSelect.value)
+        ?.settings?.failure_policy || {};
+    return {
+      ...store.config.failure_policy,
+      ...Object.fromEntries(
+        Object.entries(fromProvider).filter(([, v]) => v != null),
+      ),
+    };
+  }
+
+  function renderSettings() {
+    const schema = kindSchema(providerKind())?.engine_settings;
+    const values = engine?.settings ?? {};
+    own = schemaForm(schema, values, { onChange, omit: sharedNames });
+    shared = schemaForm(schema, values, {
+      onChange,
+      omit: Object.keys(schema?.properties || {}).filter(
+        (n) => !sharedNames.includes(n),
+      ),
+      placeholders: { failure_policy: inheritedPolicy() },
+    });
+    settingsBox.replaceChildren(
+      ...[
+        ...own.rows,
+        el("h3", { style: "margin:18px 0 8px" }, "Limits and routing"),
+        ...shared.rows,
+      ].filter(Boolean),
+    );
+  }
+
+  entry = schemaForm(store.schema.engine_entry, engine ?? {}, { onChange });
+  renderSettings();
 
   const collect = () =>
     JSON.stringify([
       idInput.value,
       providerSelect.value,
-      modelInput.value,
-      maxTokensInput.value,
-      chunkTokensInput.value,
-      enabledInput.checked,
-      extraInput.value,
+      entry.snapshot(),
+      own.snapshot(),
+      shared.snapshot(),
     ]);
   baseline = collect();
   getState = collect;
@@ -166,23 +180,17 @@ function render() {
       class: "primary",
       onclick: (event) =>
         busy(event.target, async () => {
-          let extraBody = {};
-          if (extraInput.value.trim()) {
-            try {
-              extraBody = JSON.parse(extraInput.value);
-            } catch {
-              toast("Extra body is not valid JSON", "error");
-              return;
-            }
+          let payload;
+          try {
+            payload = {
+              ...entry.collect(),
+              provider: providerSelect.value,
+              settings: { ...own.collect(), ...shared.collect() },
+            };
+          } catch {
+            toast("A JSON field is not valid JSON", "error");
+            return;
           }
-          const payload = {
-            provider: providerSelect.value,
-            model: modelInput.value.trim() || null,
-            enabled: enabledInput.checked,
-            max_input_tokens: numberOrNull(maxTokensInput),
-            chunk_tokens: numberOrNull(chunkTokensInput),
-            extra_body: extraBody,
-          };
           if (engine) {
             await mutate(`/engines/${encodeURIComponent(engine.id)}`, {
               method: "PATCH",
@@ -235,19 +243,8 @@ function render() {
         field("Id", idInput),
         field("Provider", providerSelect.root),
       ),
-      el("div", { style: "margin-top:10px" }, field("Model", modelInput)),
-      el(
-        "div",
-        { class: "row", style: "margin-top:10px" },
-        field("Max input tokens", maxTokensInput),
-        field("Chunk tokens", chunkTokensInput),
-      ),
-      el(
-        "label",
-        { class: "field", style: "margin-top:10px" },
-        el("span", {}, enabledInput, "Enabled"),
-      ),
-      field("Extra request body (JSON)", extraInput),
+      ...entry.rows,
+      settingsBox,
       el(
         "div",
         { class: "actions" },

@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from ... import __version__
-from ...engines import is_available
+from ...engines import is_available, resolve_all
 from ..deps import ConfigDep
 from ..dto import HealthResponse
 
@@ -16,7 +16,7 @@ router = APIRouter(tags=["service"])
 def health(config: ConfigDep) -> HealthResponse:
     """``unconfigured`` means the service is up but has no usable engine —
     every lane is disabled or missing its credentials."""
-    usable = [r.id for r in config.resolved_engines() if is_available(r)]
+    usable = [r.id for r in resolve_all(config) if is_available(r)]
     return HealthResponse(
         status="ok" if usable else "unconfigured",
         version=__version__,

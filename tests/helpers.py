@@ -4,40 +4,45 @@ from __future__ import annotations
 
 from typing import Any
 
-from translator.config import AppConfig, ResolvedEngine
+from translator.config import AppConfig
+from translator.engines import engine_class
 from translator.engines.base import (
     Engine,
     EngineCapabilities,
+    EngineSettings,
     HtmlResult,
     HtmlSupport,
+    ProviderSettings,
+    ResolvedEngine,
 )
 from translator.schemas import HtmlContext
+
+# Enough to build an openai engine; other kinds take nothing or supply their own.
+DEFAULT_PROVIDER_SETTINGS: dict[str, dict[str, Any]] = {
+    "openai": {"base_url": "http://fake/v1"},
+}
 
 
 def make_resolved(
     engine_id: str = "test",
     *,
     kind: Any = "openai",
-    base_url: str | None = "http://fake/v1",
-    api_key: str | None = None,
-    options: dict[str, str] | None = None,
+    provider_settings: dict[str, Any] | None = None,
+    engine_settings: dict[str, Any] | None = None,
     requires_key: bool = True,
-    model: str | None = None,
-    extra_body: dict[str, Any] | None = None,
+    enabled: bool = True,
 ) -> ResolvedEngine:
+    cls = engine_class(kind)
+    if provider_settings is None:
+        provider_settings = dict(DEFAULT_PROVIDER_SETTINGS.get(kind, {}))
+    provider_settings.setdefault("requires_key", requires_key)
     return ResolvedEngine(
         id=engine_id,
         provider_id=engine_id,
         kind=kind,
-        base_url=base_url,
-        api_key=api_key,
-        options=options or {},
-        requires_key=requires_key,
-        model=model,
-        enabled=True,
-        max_input_tokens=None,
-        chunk_tokens=None,
-        extra_body=extra_body or {},
+        enabled=enabled,
+        provider_settings=cls.PROVIDER_SETTINGS.model_validate(provider_settings),
+        engine_settings=cls.ENGINE_SETTINGS.model_validate(engine_settings or {}),
     )
 
 
@@ -61,19 +66,20 @@ class FakeEngine(Engine):
         source_langs: list[str] | None = None,
         target_langs: list[str] | None = None,
     ) -> None:
+        # Not an OpenAICompatEngine subclass, so the shared bases are what it
+        # should carry; it declares no kind-specific settings of its own.
         super().__init__(
             ResolvedEngine(
                 id=engine_id,
                 provider_id=engine_id,
                 kind="openai",
-                base_url="http://fake",
-                requires_key=False,
-                model=None,
                 enabled=True,
-                max_input_tokens=None,
-                chunk_tokens=chunk_tokens,
-                source_langs=source_langs,
-                target_langs=target_langs,
+                provider_settings=ProviderSettings(requires_key=False),
+                engine_settings=EngineSettings(
+                    chunk_tokens=chunk_tokens,
+                    source_langs=source_langs,
+                    target_langs=target_langs,
+                ),
             )
         )
         self._caps = EngineCapabilities(
@@ -125,15 +131,25 @@ def make_config(
     chapter: list[str] | None = None,
     short_text: list[str] | None = None,
     extra_engines: list[dict[str, object]] | None = None,
+    failure_policy: dict[str, object] | None = None,
 ) -> AppConfig:
-    engines: list[dict[str, object]] = [
-        {"id": i, "kind": "openai", "base_url": "http://fake", "requires_key": False}
+    providers: list[dict[str, object]] = [
+        {
+            "id": i,
+            "kind": "openai",
+            "settings": {"base_url": "http://fake", "requires_key": False},
+        }
         for i in engine_ids
     ]
+    engines: list[dict[str, object]] = [{"id": i, "provider": i} for i in engine_ids]
     engines.extend(extra_engines or [])
     return AppConfig.model_validate(
         {
+            "providers": providers,
             "engines": engines,
+            # Tests want deterministic timing, not the production defaults.
+            "failure_policy": failure_policy
+            or {"transient_retries": 0, "backoff_base_seconds": 0},
             "routing": {
                 "chapter": chapter if chapter is not None else list(engine_ids),
                 "short_text": short_text

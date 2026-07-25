@@ -172,19 +172,28 @@ translator/            public surface: schemas (the translation contract),
  │                     pipeline (the workflow around an engine call)
  │                     limits (provider/engine health) · store (live config)
  ├─ engines/           one class per kind, reached via registry
- │                     base (protocol) · http (shared client) · prompts
+ │                     base (protocol, settings models) · http (shared client)
+ │                     registry (kind table, resolution, validation) · prompts
  ├─ text/              html · languages · detect · glossary  (pure helpers)
- └─ config/            models · defaults · overlay · io
+ └─ config/            models · defaults · overlay · io · legacy (deletable)
 ```
 
 ## Engine abstraction
 
 An engine class declares everything about its kind — no lookup table anywhere
-else has to be kept in sync with it:
+else has to be kept in sync with it. Its two Pydantic settings models are the
+single source of truth for the kind's configuration: the config layer stores
+their data as an opaque `settings` dict, the registry validates it, secret
+redaction reads their field metadata, and the dashboard renders its forms from
+their JSON Schema at `GET /schema`:
 
 ```
 Engine (protocol)
- ├─ KIND, CREDENTIALS, HTML, GLOSSARY            # class-level declarations
+ ├─ KIND, HTML, GLOSSARY                         # class-level declarations
+ ├─ PROVIDER_SETTINGS, ENGINE_SETTINGS           # the kind's own config models,
+ │                                               #   extending the shared bases
+ │                                               #   and free to narrow a field
+ ├─ credentials() -> [CredentialField]           # derived from PROVIDER_SETTINGS
  ├─ describe(config) -> capabilities             # answerable without an instance,
  ├─ coverage(config) -> (source, target langs)   #   so disabled engines can still
  ├─ supports_pair(config, src, tgt) -> bool      #   be listed and gated
@@ -216,7 +225,10 @@ picks an engine and handles failure, the pipeline decides what to send it
   a ban.
 - **Fallback**: on `quota` errors the whole provider is marked exhausted until
   its window resets and the next lane is tried; `transient` errors retry with
-  backoff on the same engine; `fatal` skips to the next lane immediately.
+  backoff on the same engine; `fatal` skips to the next lane immediately. The
+  retry counts and cooldowns come from the failure policy, which a provider or
+  an individual engine may override (resolved engine > provider > global) —
+  a slow local model wants fewer retries than a fast hosted one.
 - **Concurrency**: per-*provider* max-concurrency (free tiers often allow 1),
   shared across the account's engines. A busy provider (all slots in use) is
   skipped for the next lane engine that can start now; the request waits only
@@ -275,13 +287,17 @@ just set a key:
 ```yaml
 providers:
   - id: gemini # set a key to enable this provider's gemini-* engines
-    api_key: <token>
+    settings:
+      api_key: <token>
 
 # engines/routing are optional here — the defaults (keyless bing, gemini,
 # groq, an openrouter lane) already apply. Override only what you change:
 routing:
   chapter: [bing, gemini-flash] # keyless Bing first, then keyed lanes
 ```
+
+Fields specific to an engine kind live under `settings`; which ones exist is
+declared by the kind's class and served at `GET /schema`.
 
 Engines whose provider requires a key that is not set yet are auto-disabled
 (visible in `/engines`). Free tiers churn, so adding/removing a lane is a

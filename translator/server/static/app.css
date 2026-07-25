@@ -524,6 +524,53 @@ label.field > span {
   font-weight: 500;
   font-size: 12.5px;
 }
+/* Schema-rendered rows: label + control + optional hint from the model. */
+.field-block {
+  margin-bottom: 12px;
+}
+.field-block > label.field {
+  margin-bottom: 0;
+}
+.field-block > .field-hint {
+  margin-top: 4px;
+}
+label.field.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+label.field.check > span {
+  margin-bottom: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+.field-legend {
+  display: block;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12.5px;
+  margin-bottom: 5px;
+}
+.subform {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px 2px;
+  margin-top: 8px;
+  display: grid;
+  gap: 0 20px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 620px) {
+  .subform {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.row > .field-block {
+  flex: 1;
+  min-width: min(100%, 140px);
+  margin-bottom: 0;
+}
+
 input[type="text"],
 input[type="password"],
 input[type="number"],

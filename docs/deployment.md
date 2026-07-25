@@ -16,7 +16,8 @@ curl http://localhost:8184/health    # lists which engines came up
 ```
 
 Then open http://localhost:8184/ and paste your provider API keys in the
-Providers table (or `PATCH /providers/{id}` with `{"api_key": "..."}`) —
+Providers table (or `PATCH /providers/{id}` with
+`{"settings": {"api_key": "..."}}`) —
 the matching engines enable instantly, no restart needed.
 
 The API has no authentication — see "Security" below before running it
@@ -44,7 +45,9 @@ Three options, all optional:
 `config.yml` is **not** a full snapshot — it is a sparse overlay on the
 built-in defaults (`translator/config/defaults.py`). On load, its entries merge onto
 the defaults **by id**, so you list only what you change; everything you omit
-falls back to the default. This is what keeps the file from going stale: when
+falls back to the default. Entries merge one level deep into `settings`, so
+setting a key leaves the rest of that entry's settings inherited; every value
+*inside* `settings` (including `extra_body`) replaces wholesale. This is what keeps the file from going stale: when
 a new default provider/engine is added (or an existing one's model id or rate
 limits change) in a new release, it flows into your install automatically
 instead of being frozen at whatever the file first captured.
@@ -53,18 +56,32 @@ The API and web UI write this same overlay back, so a hand-edited file and a
 UI-managed one stay in the same minimal shape. A typical file is just a few
 keys:
 
+Providers and engines have the same shape: identity plus a `settings` bag.
+A provider is an `id`, a `kind`, and `settings`; an engine is an `id`, a
+`provider`, `enabled`, and `settings`. The bag holds both the fields every kind
+shares — `requires_key`, `rps`, `rpm`, `max_concurrency`, `failure_policy` for a
+provider; `max_input_tokens`, `chunk_tokens`, `source_langs`, `target_langs`,
+`failure_policy` for an engine — and whatever the kind itself adds, such as an
+endpoint, credentials, or a model name. A kind may also *narrow* an inherited
+field: bing caps `max_input_tokens` at what the service accepts, and baidu
+defaults `target_langs` to its catalog. Which fields exist is declared by the
+kind alone and served at `GET /schema`, which is what the web UI builds its
+forms from.
+
 ```yaml
 # Paste keys for default providers you use — base_url, limits, etc. are
 # inherited from the default of the same id. The matching engines enable
 # themselves. Override any inherited field by adding it here.
 providers:
   - id: zai
-    api_key: "your-z.ai-key"
+    settings:
+      api_key: "your-z.ai-key"
   - id: gemini
-    api_key: "your-ai-studio-key"
+    settings:
+      api_key: "your-ai-studio-key"
   # baidu takes two named credentials instead of a single api_key:
   # - id: baidu
-  #   options: {app_id: "...", secret_key: "..."}
+  #   settings: {app_id: "...", secret_key: "..."}
 ```
 
 Other overlay operations:
@@ -72,29 +89,44 @@ Other overlay operations:
 - **Add your own provider/engine** — give it a new id; custom entries are
   listed in full. A local OpenAI-compatible server (llama.cpp, Ollama) needs
   no key:
+  A custom provider must declare its `kind` — that is what marks the entry
+  self-standing rather than a patch for a default that no longer exists, the
+  same rule custom engines already follow with `provider`.
   ```yaml
   providers:
     - id: local-llm
       kind: openai
-      base_url: http://localhost:8080/v1
-      requires_key: false
+      settings:
+        base_url: http://localhost:8080/v1
+        requires_key: false
   engines:
     - id: local-qwen
       provider: local-llm
-      model: qwen3.5-4b
-      max_input_tokens: 32000
+      settings:
+        model: qwen3.5-4b
+        max_input_tokens: 32000
   ```
 - **Override one field** of a default engine (the rest is inherited):
   ```yaml
   engines:
     - id: gemini-flash
-      max_input_tokens: 100000 # smaller context than the default
+      settings:
+        max_input_tokens: 100000 # smaller context than the default
   ```
 - **Drop a default** you never want, by id (a removed provider takes its
   engines with it):
   ```yaml
   removed_providers: [groq]
   removed_engines: [groq-oss]
+  ```
+- **Tune retries for one lane** — the failure policy is global, and a provider
+  or a single engine may override any part of it (engine wins over provider,
+  provider over global):
+  ```yaml
+  engines:
+    - id: local-qwen
+      settings:
+        failure_policy: { transient_retries: 0, cooldown_seconds: 900 }
   ```
 - **Reorder/restrict a routing lane** — only the lanes you list change; omit
   `routing` to keep the default order (keyless Bing first, then the keyed LLM
@@ -104,15 +136,22 @@ Other overlay operations:
     chapter: [gemini-flash, bing]
   ```
 
-Legacy flat configs (engines carrying `base_url`/`kind` inline instead of a
-`provider` reference) predate the overlay format and are loaded standalone —
-defaults are not merged into them.
+Older shapes still load, and are rewritten into the current one on the next
+save: keys written flat on an entry (`api_key`, `base_url`, `requires_key`,
+`rps`, `rpm`, `max_concurrency`, `model`, `extra_body`, `max_input_tokens`,
+`chunk_tokens`, `source_langs`, `target_langs`, `failure_policy`, or an
+`options` bag) are hoisted into `settings`, and
+flat configs whose engines carry `base_url`/`kind` inline instead of a
+`provider` reference predate the overlay format and are loaded standalone —
+defaults are not merged into them. Both are deprecated and will be dropped in
+a future release.
 
 ## Engine keys
 
 Provider API keys are set remotely — web UI at `/` or
-`PATCH /providers/{id} {"api_key": "..."}` — and persist in
-`/data/config.yml`. Pre-wired providers and where to sign up:
+`PATCH /providers/{id} {"settings": {"api_key": "..."}}` — and persist in
+`/data/config.yml`. (The older flat `{"api_key": "..."}` body is still
+accepted, but deprecated.) Pre-wired providers and where to sign up:
 
 | Provider | Where to get a key                                                        |
 | -------- | ------------------------------------------------------------------------- |
@@ -178,18 +217,18 @@ curl -s http://localhost:8184/config
 # Set a provider's API key (enables its engines instantly)
 curl -s -X PATCH http://localhost:8184/providers/zai \
   -H 'Content-Type: application/json' \
-  -d '{"api_key": "your-key"}'
+  -d '{"settings": {"api_key": "your-key"}}'
 
 # Swap a model in place
 curl -s -X PATCH http://localhost:8184/engines/zai-glm-flash \
   -H 'Content-Type: application/json' \
-  -d '{"model": "glm-5-flash"}'
+  -d '{"settings": {"model": "glm-5-flash"}}'
 
 # Add a second model on an existing provider (shares its rate limits).
 # New engines are not routed automatically; add them to a lane via PUT /routing.
 curl -s -X POST http://localhost:8184/engines \
   -H 'Content-Type: application/json' \
-  -d '{"id": "or-qwen", "provider": "openrouter", "model": "qwen/qwen3.5-235b-a22b:free"}'
+  -d '{"id": "or-qwen", "provider": "openrouter", "settings": {"model": "qwen/qwen3.5-235b-a22b:free"}}'
 
 # Reorder lanes (and add newly created engines)
 curl -s -X PUT http://localhost:8184/routing \

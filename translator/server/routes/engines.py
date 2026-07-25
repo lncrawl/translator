@@ -5,31 +5,38 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, model_validator
 
-from ...config import EngineConfig
-from ...engines import EngineStatus, capabilities_for, is_available
+from ...config import LANE_NAMES, AppConfig, EngineConfig
+from ...config.legacy import hoist_engine_settings
+from ...engines import (
+    EngineStatus,
+    capabilities_for,
+    engine_class,
+    is_available,
+    resolve_all,
+)
 from ...errors import ApiError
 from ..deps import ConfigDep, RouterDep, StoreDep
 from ..dto import EngineCapabilitiesInfo, EngineInfo, EnginesResponse
-from ..editing import apply_edit
+from ..editing import apply_edit, merge_patch
+from ..secrets import redact_engine, resolve_engine_secrets
 
 router = APIRouter(tags=["engines"])
 
 
 class EnginePatch(BaseModel):
     provider: str | None = None
-    model: str | None = None
     enabled: bool | None = None
-    max_input_tokens: int | None = Field(default=None, gt=0)
-    chunk_tokens: int | None = Field(default=None, gt=0)
-    extra_body: dict[str, Any] | None = None
+    settings: dict[str, Any] | None = None
+
+    _hoist = model_validator(mode="before")(hoist_engine_settings)
 
 
 @router.get("/engines")
 def list_engines(config: ConfigDep, engine_router: RouterDep) -> EnginesResponse:
     infos = []
-    for resolved in config.resolved_engines():
+    for resolved in resolve_all(config):
         caps = capabilities_for(resolved)
         status = engine_router.status(resolved.id) or EngineStatus.DISABLED
         slots = engine_router.concurrency(resolved.id)
@@ -38,7 +45,7 @@ def list_engines(config: ConfigDep, engine_router: RouterDep) -> EnginesResponse
                 id=resolved.id,
                 provider=resolved.provider_id,
                 kind=resolved.kind,
-                model=resolved.model,
+                model=engine_class(resolved.kind).display_model(resolved),
                 enabled=is_available(resolved),
                 capabilities=EngineCapabilitiesInfo(
                     html=caps.html.value,
@@ -60,26 +67,38 @@ def list_engines(config: ConfigDep, engine_router: RouterDep) -> EnginesResponse
 async def create_engine(payload: EngineConfig, store: StoreDep) -> EngineConfig:
     if store.config.engine(payload.id) is not None:
         raise ApiError(409, "engine_exists", f"engine {payload.id!r} exists")
-    await apply_edit(store, lambda data: data["engines"].append(payload.model_dump()))
-    return payload
+    # A new engine has no stored secrets, so placeholders are dropped.
+    entry = resolve_engine_secrets(payload.model_dump(), None)
+    new_config = await apply_edit(store, lambda data: data["engines"].append(entry))
+    created = new_config.engine(payload.id)
+    assert created is not None
+    return _redacted(new_config, created)
 
 
 @router.patch("/engines/{engine_id:path}")
 async def update_engine(
     engine_id: str, payload: EnginePatch, store: StoreDep
 ) -> EngineConfig:
-    if store.config.engine(engine_id) is None:
+    stored = store.config.engine(engine_id)
+    if stored is None:
         raise ApiError(404, "not_found", f"unknown engine {engine_id!r}")
-    changes = payload.model_dump(exclude_unset=True)
+    changes = resolve_engine_secrets(payload.model_dump(exclude_unset=True), stored)
 
     def edit(data: dict[str, Any]) -> None:
         for entry in data["engines"]:
             if entry["id"] == engine_id:
-                entry.update(changes)
+                merge_patch(entry, changes)
 
-    updated = (await apply_edit(store, edit)).engine(engine_id)
+    new_config = await apply_edit(store, edit)
+    updated = new_config.engine(engine_id)
     assert updated is not None
-    return updated
+    return _redacted(new_config, updated)
+
+
+def _redacted(config: AppConfig, engine: EngineConfig) -> EngineConfig:
+    provider = config.provider(engine.provider)
+    assert provider is not None
+    return redact_engine(engine, provider.kind)
 
 
 @router.delete("/engines/{engine_id:path}", status_code=204)
@@ -90,7 +109,7 @@ async def delete_engine(engine_id: str, store: StoreDep) -> Response:
 
     def edit(data: dict[str, Any]) -> None:
         data["engines"] = [e for e in data["engines"] if e["id"] != engine_id]
-        for lane in ("chapter", "short_text"):
+        for lane in LANE_NAMES:
             data["routing"][lane] = [i for i in data["routing"][lane] if i != engine_id]
 
     await apply_edit(store, edit)

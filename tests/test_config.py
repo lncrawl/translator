@@ -7,49 +7,35 @@ import yaml
 from pydantic import ValidationError
 
 from translator.config import AppConfig, build_overlay, load_config, save_config
-from translator.engines import is_available
+from translator.engines import (
+    engine_class,
+    is_available,
+    resolve,
+    resolve_all,
+    validate_config,
+)
 
 
-def test_legacy_flat_config_is_migrated() -> None:
-    config = AppConfig.model_validate(
-        {
-            "engines": [
-                {
-                    "id": "old-style",
-                    "kind": "openai",
-                    "base_url": "http://x/v1",
-                    "api_key": "sk-test",
-                    "rpm": 10,
-                    "model": "m1",
-                    "max_input_tokens": 8000,
-                }
-            ],
-            "routing": {"chapter": ["old-style"]},
-        }
-    )
-    provider = config.provider("old-style")
-    assert provider is not None
-    assert provider.base_url == "http://x/v1"
-    assert provider.api_key == "sk-test"
-    assert provider.rpm == 10
-    resolved = config.resolved("old-style")
-    assert resolved is not None
-    assert resolved.model == "m1"
-    assert resolved.max_input_tokens == 8000
+def openai_provider(provider_id: str, **settings: object) -> dict[str, object]:
+    return {
+        "id": provider_id,
+        "kind": "openai",
+        "settings": {"base_url": "http://x/v1", **settings},
+    }
 
 
 def test_engines_share_provider() -> None:
     config = AppConfig.model_validate(
         {
-            "providers": [{"id": "p", "kind": "openai", "base_url": "http://x"}],
+            "providers": [openai_provider("p")],
             "engines": [
-                {"id": "a", "provider": "p", "model": "m1"},
-                {"id": "b", "provider": "p", "model": "m2"},
+                {"id": "a", "provider": "p", "settings": {"model": "m1"}},
+                {"id": "b", "provider": "p", "settings": {"model": "m2"}},
             ],
         }
     )
-    assert config.resolved("a").provider_id == "p"  # type: ignore[union-attr]
-    assert config.resolved("b").provider_id == "p"  # type: ignore[union-attr]
+    assert resolve(config, "a").provider_id == "p"  # type: ignore[union-attr]
+    assert resolve(config, "b").provider_id == "p"  # type: ignore[union-attr]
 
 
 def test_unknown_provider_reference_rejected() -> None:
@@ -60,8 +46,8 @@ def test_unknown_provider_reference_rejected() -> None:
 def test_save_config_round_trips(tmp_path: Path) -> None:
     config = AppConfig.model_validate(
         {
-            "providers": [{"id": "p", "kind": "openai", "base_url": "http://x"}],
-            "engines": [{"id": "a", "provider": "p", "model": "m1"}],
+            "providers": [openai_provider("p")],
+            "engines": [{"id": "a", "provider": "p", "settings": {"model": "m1"}}],
             "routing": {"chapter": ["a"], "short_text": ["a"]},
         }
     )
@@ -71,33 +57,79 @@ def test_save_config_round_trips(tmp_path: Path) -> None:
     assert loaded == config
 
 
-def test_sparse_overlay_merges_defaults(tmp_path: Path) -> None:
-    # A file listing only one provider key still gets every default engine.
+def test_custom_provider_keeps_its_kind_when_saved(tmp_path: Path) -> None:
+    # `kind` has a default, so exclude_defaults would drop it — but its
+    # presence is what marks the entry self-standing rather than a patch for a
+    # default that no longer exists.
+    config = AppConfig.model_validate(
+        {
+            "providers": [openai_provider("mine")],
+            "engines": [{"id": "a", "provider": "mine"}],
+        }
+    )
     path = tmp_path / "config.yml"
-    path.write_text("providers:\n  - id: gemini\n    api_key: k\n", encoding="utf-8")
+    save_config(config, path)
+    saved = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert saved["providers"][0]["kind"] == "openai"
+    assert load_config(path).provider("mine") is not None
+
+
+def test_sparse_patch_preserves_sibling_settings(tmp_path: Path) -> None:
+    # The merge is one level deep into `settings`: a patch that sets only the
+    # api_key must not wipe the default's base_url. Getting this wrong drops
+    # the provider, its engines, and its routing entries — silently.
+    path = tmp_path / "config.yml"
+    path.write_text(
+        "providers:\n  - id: gemini\n    settings:\n      api_key: k\n",
+        encoding="utf-8",
+    )
     config = load_config(path)
+    gemini = config.provider("gemini")
+    assert gemini is not None
+    assert gemini.settings["api_key"] == "k"
+    assert (
+        gemini.settings["base_url"]
+        == "https://generativelanguage.googleapis.com/v1beta/openai"
+    )
     assert {e.id for e in config.engines} >= {
         "gemini-flash-latest",
         "groq-oss-120b",
         "bing",
     }
-    gemini = config.provider("gemini")
-    assert gemini is not None
-    assert gemini.api_key == "k"
-    # The default's base_url survives the merge (not clobbered by the overlay).
-    assert gemini.base_url == "https://generativelanguage.googleapis.com/v1beta/openai"
-    # Setting the key lights up the engine; defaults for others still apply.
-    assert is_available(config.resolved("gemini-flash-latest"))  # type: ignore[arg-type]
+    assert is_available(resolve(config, "gemini-flash-latest"))  # type: ignore[arg-type]
+
+
+def test_stale_patch_for_removed_default_is_dropped(tmp_path: Path) -> None:
+    # A patch whose default is gone has nothing to patch; it is pruned rather
+    # than failing the whole file to load. A custom entry declares its kind.
+    path = tmp_path / "config.yml"
+    path.write_text(
+        "providers:\n"
+        "  - id: ghost\n"
+        "    settings:\n"
+        "      api_key: k\n"
+        "  - id: mine\n"
+        "    kind: openai\n"
+        "    settings:\n"
+        "      base_url: http://x/v1\n",
+        encoding="utf-8",
+    )
+    config = load_config(path)
+    assert config.provider("ghost") is None
+    assert config.provider("mine") is not None
 
 
 def test_build_overlay_is_sparse() -> None:
     config = load_config(Path("/nonexistent.yml"))  # built-in defaults
     provider = config.provider("gemini")
     assert provider is not None
-    provider.api_key = "secret"
+    provider.settings["api_key"] = "secret"
     overlay = build_overlay(config)
-    # Only the one changed field is written — not the whole default tree.
-    assert overlay == {"providers": [{"id": "gemini", "api_key": "secret"}]}
+    # Only the one changed settings key is written — not the whole default
+    # tree, and not the sibling base_url it inherited.
+    assert overlay == {
+        "providers": [{"id": "gemini", "settings": {"api_key": "secret"}}]
+    }
 
 
 def test_overlay_removals_suppress_defaults(tmp_path: Path) -> None:
@@ -133,18 +165,6 @@ def test_removals_round_trip_through_save(tmp_path: Path) -> None:
     assert reloaded.provider("gemini") is not None
 
 
-def test_legacy_flat_config_skips_default_merge(tmp_path: Path) -> None:
-    path = tmp_path / "config.yml"
-    path.write_text(
-        "engines:\n  - id: solo\n    kind: openai\n    base_url: http://x\n"
-        "    requires_key: false\nrouting:\n  chapter: [solo]\n",
-        encoding="utf-8",
-    )
-    config = load_config(path)
-    # Legacy flat files load standalone — defaults are NOT merged in.
-    assert {e.id for e in config.engines} == {"solo"}
-
-
 def test_missing_file_yields_builtin_defaults(tmp_path: Path) -> None:
     config = load_config(tmp_path / "nope.yml")
     engine_ids = {e.id for e in config.engines}
@@ -161,12 +181,12 @@ def test_default_config_engines_need_keys() -> None:
     # keyless auth) is available — no API engine can fire accidentally.
     # Setting a provider's key remotely lights up its engines.
     config = load_config(Path("/nonexistent/config.yml"))
-    available = [r.id for r in config.resolved_engines() if is_available(r)]
+    available = [r.id for r in resolve_all(config) if is_available(r)]
     assert available == ["bing"]
     provider = config.provider("gemini")
     assert provider is not None
-    provider.api_key = "k"
-    assert [r.id for r in config.resolved_engines() if is_available(r)] == [
+    provider.settings["api_key"] = "k"
+    assert [r.id for r in resolve_all(config) if is_available(r)] == [
         "bing",
         "gemini-flash-latest",
         "gemini-flash-lite-latest",
@@ -180,7 +200,8 @@ def test_unknown_routing_reference_rejected() -> None:
     with pytest.raises(ValidationError, match="unknown engine"):
         AppConfig.model_validate(
             {
-                "engines": [{"id": "a", "kind": "openai"}],
+                "providers": [openai_provider("p")],
+                "engines": [{"id": "a", "provider": "p"}],
                 "routing": {"chapter": ["ghost"]},
             }
         )
@@ -189,36 +210,137 @@ def test_unknown_routing_reference_rejected() -> None:
 def test_duplicate_engine_ids_rejected() -> None:
     with pytest.raises(ValidationError, match="duplicate"):
         AppConfig.model_validate(
-            {"engines": [{"id": "a", "kind": "openai"}, {"id": "a", "kind": "deepl"}]}
+            {
+                "providers": [openai_provider("p")],
+                "engines": [{"id": "a", "provider": "p"}, {"id": "a", "provider": "p"}],
+            }
         )
 
 
 def test_engine_unavailable_without_key() -> None:
-    data = {"engines": [{"id": "a", "kind": "openai", "base_url": "http://x"}]}
-    config = AppConfig.model_validate(data)
-    resolved = config.resolved("a")
+    config = AppConfig.model_validate(
+        {
+            "providers": [openai_provider("p")],
+            "engines": [{"id": "a", "provider": "p"}],
+        }
+    )
+    resolved = resolve(config, "a")
     assert resolved is not None
     assert is_available(resolved) is False
 
-    provider = config.provider("a")
+    provider = config.provider("p")
     assert provider is not None
-    provider.api_key = "secret"
-    resolved = config.resolved("a")
+    provider.settings["api_key"] = "secret"
+    resolved = resolve(config, "a")
     assert resolved is not None
     assert is_available(resolved) is True
 
     keyless = AppConfig.model_validate(
         {
-            "engines": [
-                {
-                    "id": "a",
-                    "kind": "openai",
-                    "base_url": "http://x",
-                    "requires_key": False,
-                }
-            ]
+            "providers": [openai_provider("p", requires_key=False)],
+            "engines": [{"id": "a", "provider": "p"}],
         }
     )
-    resolved = keyless.resolved("a")
+    resolved = resolve(keyless, "a")
     assert resolved is not None
     assert is_available(resolved) is True
+
+
+# -- per-kind settings validation ----------------------------------------------
+
+
+def test_unknown_settings_key_is_rejected() -> None:
+    config = AppConfig.model_validate(
+        {
+            "providers": [openai_provider("p", nonsense="x")],
+            "engines": [{"id": "a", "provider": "p"}],
+        }
+    )
+    with pytest.raises(ValueError, match="nonsense"):
+        validate_config(config)
+
+
+def test_openai_provider_requires_base_url() -> None:
+    config = AppConfig.model_validate(
+        {
+            "providers": [{"id": "p", "kind": "openai", "settings": {"api_key": "k"}}],
+            "engines": [{"id": "a", "provider": "p"}],
+        }
+    )
+    with pytest.raises(ValueError, match="base_url"):
+        validate_config(config)
+
+
+def test_settings_of_the_wrong_kind_are_rejected() -> None:
+    # `model` is an openai engine setting; a bing engine takes none.
+    config = AppConfig.model_validate(
+        {
+            "providers": [
+                {"id": "b", "kind": "bing", "settings": {"requires_key": False}}
+            ],
+            "engines": [{"id": "a", "provider": "b", "settings": {"model": "x"}}],
+        }
+    )
+    with pytest.raises(ValueError, match="model"):
+        validate_config(config)
+
+
+def test_settings_fields_must_declare_secrecy() -> None:
+    # A field that says nothing about secrecy would be returned in plaintext by
+    # GET /config. The registry refuses to import rather than leak silently.
+    from pydantic import Field
+
+    from translator.engines import ENGINE_CLASSES
+    from translator.engines.base import ProviderSettings
+    from translator.engines.registry import _undeclared_secrecy
+
+    class Unmarked(ProviderSettings):
+        token: str | None = Field(default=None)
+
+    cls = ENGINE_CLASSES["openai"]
+    original = cls.PROVIDER_SETTINGS
+    try:
+        cls.PROVIDER_SETTINGS = Unmarked
+        assert _undeclared_secrecy() == ["openai.provider.token"]
+    finally:
+        cls.PROVIDER_SETTINGS = original
+    assert _undeclared_secrecy() == []
+
+
+def test_kind_declares_its_own_limit_instead_of_clamping() -> None:
+    # bing's request cap is a field bound, so asking for more is rejected up
+    # front rather than silently reduced at call time.
+    config = AppConfig.model_validate(
+        {
+            "providers": [{"id": "b", "kind": "bing"}],
+            "engines": [
+                {"id": "a", "provider": "b", "settings": {"max_input_tokens": 999_999}}
+            ],
+        }
+    )
+    with pytest.raises(ValueError, match="max_input_tokens"):
+        validate_config(config)
+
+
+def test_kind_declares_its_language_catalog_as_a_default() -> None:
+    config = AppConfig.model_validate(
+        {
+            "providers": [{"id": "bd", "kind": "baidu"}],
+            "engines": [{"id": "a", "provider": "bd"}],
+        }
+    )
+    resolved = resolve(config, "a")
+    assert resolved is not None
+    _, targets = engine_class("baidu").coverage(resolved)
+    assert targets is not None and "ja" in targets and "en" in targets
+    # An explicit list narrows the catalog rather than being ignored.
+    narrowed = AppConfig.model_validate(
+        {
+            "providers": [{"id": "bd", "kind": "baidu"}],
+            "engines": [
+                {"id": "a", "provider": "bd", "settings": {"target_langs": ["en"]}}
+            ],
+        }
+    )
+    _, targets = engine_class("baidu").coverage(resolve(narrowed, "a"))  # type: ignore[arg-type]
+    assert targets == ["en"]
