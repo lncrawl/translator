@@ -337,3 +337,22 @@ export function schemaForm(schema, values = {}, opts = {}) {
     },
   };
 }
+
+/**
+ * One kind's settings as two forms over the same values: the fields the kind
+ * adds, and the ones it inherits from `base` (`GET /schema`'s `provider` or
+ * `engine`). A kind that *narrows* an inherited field still renders in the
+ * inherited group, since membership follows the base's field names.
+ *
+ * @returns {{own, shared}} — both are `schemaForm` results
+ */
+export function splitForm(schema, base, values, opts = {}) {
+  const inherited = Object.keys(base?.properties || {});
+  const added = Object.keys(schema?.properties || {}).filter(
+    (name) => !inherited.includes(name),
+  );
+  return {
+    own: schemaForm(schema, values, { ...opts, omit: inherited }),
+    shared: schemaForm(schema, values, { ...opts, omit: added }),
+  };
+}

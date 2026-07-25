@@ -21,7 +21,7 @@ from ...errors import ApiError
 from ..deps import ConfigDep, RouterDep, StoreDep
 from ..dto import EngineCapabilitiesInfo, EngineInfo, EnginesResponse
 from ..editing import apply_edit, merge_patch
-from ..secrets import redact_engine, resolve_engine_secrets
+from ..secrets import redact_engine, resolve_entry_secrets
 
 router = APIRouter(tags=["engines"])
 
@@ -69,7 +69,7 @@ async def create_engine(payload: EngineConfig, store: StoreDep) -> EngineConfig:
     if store.config.engine(payload.id) is not None:
         raise ApiError(409, "engine_exists", f"engine {payload.id!r} exists")
     # A new engine has no stored secrets, so placeholders are dropped.
-    entry = resolve_engine_secrets(payload.model_dump(), None)
+    entry = resolve_entry_secrets(payload.model_dump(), None)
     new_config = await apply_edit(store, lambda data: data["engines"].append(entry))
     created = new_config.engine(payload.id)
     assert created is not None
@@ -83,7 +83,7 @@ async def update_engine(
     stored = store.config.engine(engine_id)
     if stored is None:
         raise ApiError(404, "not_found", f"unknown engine {engine_id!r}")
-    changes = resolve_engine_secrets(payload.model_dump(exclude_unset=True), stored)
+    changes = resolve_entry_secrets(payload.model_dump(exclude_unset=True), stored)
     keep = _surviving_settings(store.config, stored, changes.get("provider"))
 
     def edit(data: dict[str, Any]) -> None:

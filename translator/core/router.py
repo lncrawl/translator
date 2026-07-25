@@ -67,6 +67,9 @@ class Router:
         self._providers: dict[str, ProviderRuntime] = {}
         self._runtimes: dict[str, EngineRuntime] = {}
         for engine in engines:
+            # Resolved from `config`, not read off `engine.config`: the config
+            # handed to the router is the authority on which provider an engine
+            # belongs to and which policy applies to it.
             resolved = resolve(config, engine.id)
             assert resolved is not None
             provider_settings = resolved.provider_settings
@@ -74,8 +77,8 @@ class Router:
             if provider is None:
                 provider = ProviderRuntime(
                     id=resolved.provider_id,
-                    settings=provider_settings,
                     min_interval=min_interval(provider_settings),
+                    max_concurrency=provider_settings.max_concurrency,
                 )
                 self._providers[resolved.provider_id] = provider
             policy = resolved.engine_settings.failure_policy.over(
@@ -103,7 +106,7 @@ class Router:
         runtime = self._runtimes.get(engine_id)
         if runtime is None:
             return None
-        total = runtime.provider.settings.max_concurrency
+        total = runtime.provider.max_concurrency
         free = max(0, total - runtime.provider.active_requests)
         return free, total
 

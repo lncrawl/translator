@@ -33,8 +33,8 @@ class ProviderRuntime:
     queues, and exhausts quota together."""
 
     id: str
-    settings: ProviderSettings
     min_interval: float
+    max_concurrency: int
     next_allowed: float = 0.0
     quota_resets_at: datetime | None = None
     active_requests: int = 0
@@ -47,7 +47,7 @@ class ProviderRuntime:
     @property
     def semaphore(self) -> asyncio.Semaphore:
         if self._semaphore is None:
-            self._semaphore = asyncio.Semaphore(self.settings.max_concurrency)
+            self._semaphore = asyncio.Semaphore(self.max_concurrency)
         return self._semaphore
 
     @property

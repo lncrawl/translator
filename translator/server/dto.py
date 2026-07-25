@@ -18,11 +18,13 @@ from ..schemas import TextItem
 
 
 class KindSchema(BaseModel):
-    """Everything the dashboard needs to edit one engine kind."""
+    """Everything the dashboard needs to edit one engine kind.
+
+    Capabilities are not here: they depend on an engine's own settings, so the
+    listing reports them per engine (``EngineInfo.capabilities``).
+    """
 
     kind: EngineKind
-    html: str
-    glossary: bool
     credentials: list[CredentialField]
     provider_settings: dict[str, Any] = Field(
         description="JSON Schema of the kind's provider settings",
@@ -54,7 +56,6 @@ class ConfigSchema(BaseModel):
     )
     kinds: list[KindSchema]
     lanes: list[str]
-    secret_placeholder: str
 
 
 class DetectRequest(BaseModel):

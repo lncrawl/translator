@@ -24,7 +24,7 @@ from ...engines import (
 from ..deps import ConfigDep, StoreDep
 from ..dto import ConfigSchema, KindSchema
 from ..editing import apply_edit, validated_config
-from ..secrets import SECRET_PLACEHOLDER, redact_config, resolve_config_secrets
+from ..secrets import redact_config, resolve_config_secrets
 
 router = APIRouter(tags=["config"])
 
@@ -88,19 +88,15 @@ def config_schema() -> ConfigSchema:
     The dashboard builds every provider, engine and policy form from this, so
     adding a field to a kind reaches the UI with no JavaScript change.
     """
-    kinds = []
-    for kind in get_args(EngineKind):
-        cls = engine_class(kind)
-        kinds.append(
-            KindSchema(
-                kind=kind,
-                html=cls.HTML.value,
-                glossary=cls.GLOSSARY,
-                credentials=credential_fields(kind),
-                provider_settings=cls.PROVIDER_SETTINGS.model_json_schema(),
-                engine_settings=cls.ENGINE_SETTINGS.model_json_schema(),
-            )
+    kinds = [
+        KindSchema(
+            kind=kind,
+            credentials=credential_fields(kind),
+            provider_settings=engine_class(kind).PROVIDER_SETTINGS.model_json_schema(),
+            engine_settings=engine_class(kind).ENGINE_SETTINGS.model_json_schema(),
         )
+        for kind in get_args(EngineKind)
+    ]
     return ConfigSchema(
         # Both entries are identity + settings, and the form supplies the
         # identifiers itself. `provider` and `engine` are the shared bases every
@@ -117,5 +113,4 @@ def config_schema() -> ConfigSchema:
         routing=RoutingConfig.model_json_schema(),
         kinds=kinds,
         lanes=list(LANE_NAMES),
-        secret_placeholder=SECRET_PLACEHOLDER,
     )

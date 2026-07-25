@@ -1,4 +1,4 @@
-import { schemaForm } from "../schema-form.js";
+import { splitForm } from "../schema-form.js";
 import { kindNames, kindSchema, mutate, store } from "../store.js";
 import { busy, dropdown, el, goBack, routeParts, toast } from "../ui.js";
 
@@ -82,57 +82,34 @@ function render() {
     onChange: () => renderSettings(),
   });
 
-  const onChange = () => {};
   const settingsBox = el("div", {});
   let own = null; // fields this kind adds
   let shared = null; // the ProviderSettings base every kind inherits
-  let credentialNote = null;
-
-  // The base's field names, so inherited account-level settings can be grouped
-  // apart from the endpoint and credentials the kind itself declares.
-  const sharedNames = Object.keys(store.schema.provider?.properties || {});
 
   function renderSettings() {
-    const kind = kindSchema(kindSelect.value);
-    const schema = kind?.provider_settings;
-    const values = provider?.settings ?? {};
+    ({ own, shared } = splitForm(
+      kindSchema(kindSelect.value)?.provider_settings,
+      store.schema.provider,
+      provider?.settings ?? {},
+      { placeholders: { failure_policy: store.config.failure_policy } },
+    ));
+    // "Requires an API key" sits with the credentials it gates, not with the
+    // account limits it is declared among.
+    const keyToggle = shared.field("requires_key");
+    keyToggle?.control.node.addEventListener("change", applyKeyless);
 
-    own = schemaForm(schema, values, {
-      onChange,
-      omit: sharedNames,
-    });
-    shared = schemaForm(schema, values, {
-      onChange: () => {
-        onChange();
-        applyKeyless();
-      },
-      omit: Object.keys(schema?.properties || {}).filter(
-        (n) => !sharedNames.includes(n),
-      ),
-      placeholders: {
-        failure_policy: store.config.failure_policy,
-      },
-    });
-
-    const settings = [...own.fields]
-      .filter((f) => !f.credential)
-      .map((f) => f.row)
-      .filter(Boolean);
-    const credentials = own.fields.filter((f) => f.credential).filter(Boolean);
+    const credentials = own.fields.filter((f) => f.credential);
+    const settings = own.fields.filter((f) => !f.credential).map((f) => f.row);
     if (credentials.length > 0) {
-      settings.push(
-        shared.field("requires_key").row,
-        ...credentials.map((f) => f.row),
-      );
+      settings.push(keyToggle.row, ...credentials.map((f) => f.row));
     }
     if (settings.length > 0) {
       settings.unshift(el("h3", { style: "margin:18px 0 8px" }, "Settings"));
     }
 
-    const limits = [...shared.fields]
-      .filter((f) => f.name !== "requires_key")
-      .map((f) => f.row)
-      .filter(Boolean);
+    const limits = shared.fields
+      .filter((f) => f !== keyToggle)
+      .map((f) => f.row);
     if (limits.length > 0) {
       limits.unshift(
         el("h3", { style: "margin:18px 0 8px" }, "Account limits"),
@@ -144,14 +121,12 @@ function render() {
   }
 
   // A keyless host has nothing to authenticate with, so hide the credential
-  // inputs — and the note explaining them — rather than leaving boxes that can
-  // never matter next to advice that does not apply.
+  // inputs rather than leaving boxes that can never matter.
   function applyKeyless() {
     const wanted = shared.field("requires_key")?.control.read() !== false;
     for (const f of own.fields) {
       if (f.credential) f.row.hidden = !wanted;
     }
-    if (credentialNote) credentialNote.hidden = !wanted;
   }
 
   renderSettings();

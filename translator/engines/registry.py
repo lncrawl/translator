@@ -13,7 +13,7 @@ from typing import Any, get_args
 
 from pydantic import ValidationError
 
-from ..config import AppConfig, EngineConfig, EngineKind, ProviderConfig
+from ..config import AppConfig, EngineKind
 from .baidu import BaiduEngine
 from .base import (
     CredentialField,
@@ -102,13 +102,6 @@ def engine_settings_model(kind: EngineKind) -> type[EngineSettings]:
     return engine_class(kind).ENGINE_SETTINGS
 
 
-def provider_settings_of(config: AppConfig, provider_id: str) -> ProviderSettings:
-    """The validated account settings for one provider."""
-    provider = config.provider(provider_id)
-    assert provider is not None
-    return provider_settings_model(provider.kind).model_validate(provider.settings)
-
-
 def secret_keys(model: type[Settings]) -> set[str]:
     """Declared fields of ``model`` that hold secrets."""
     return {
@@ -126,15 +119,6 @@ def resolve(config: AppConfig, engine_id: str) -> ResolvedEngine | None:
         return None
     provider = config.provider(engine.provider)
     assert provider is not None  # AppConfig validates the reference
-    return _resolve(provider, engine)
-
-
-def resolve_all(config: AppConfig) -> list[ResolvedEngine]:
-    resolved = [resolve(config, e.id) for e in config.engines]
-    return [r for r in resolved if r is not None]
-
-
-def _resolve(provider: ProviderConfig, engine: EngineConfig) -> ResolvedEngine:
     cls = engine_class(provider.kind)
     return ResolvedEngine(
         id=engine.id,
@@ -144,6 +128,11 @@ def _resolve(provider: ProviderConfig, engine: EngineConfig) -> ResolvedEngine:
         provider_settings=cls.PROVIDER_SETTINGS.model_validate(provider.settings),
         engine_settings=cls.ENGINE_SETTINGS.model_validate(engine.settings),
     )
+
+
+def resolve_all(config: AppConfig) -> list[ResolvedEngine]:
+    resolved = [resolve(config, e.id) for e in config.engines]
+    return [r for r in resolved if r is not None]
 
 
 # -- validation ----------------------------------------------------------------
@@ -157,29 +146,28 @@ def validate_config(config: AppConfig) -> None:
     ``ConfigStore`` runs it for every config that becomes live.
     """
     for provider in config.providers:
-        _check(provider.kind, "provider", provider.id, provider.settings)
+        _check(
+            provider_settings_model(provider.kind),
+            provider.settings,
+            f"provider {provider.id!r} ({provider.kind})",
+        )
     for engine in config.engines:
         owner = config.provider(engine.provider)
         assert owner is not None  # AppConfig validates the reference
-        _check(owner.kind, "engine", engine.id, engine.settings)
+        _check(
+            engine_settings_model(owner.kind),
+            engine.settings,
+            f"engine {engine.id!r} ({owner.kind})",
+        )
 
 
-def _check(
-    kind: EngineKind, scope: str, entry_id: str, settings: dict[str, Any]
-) -> None:
-    model: type[Settings] = (
-        provider_settings_model(kind)
-        if scope == "provider"
-        else engine_settings_model(kind)
-    )
+def _check(model: type[Settings], settings: dict[str, Any], what: str) -> None:
     try:
         model.model_validate(settings)
     except ValidationError as exc:
         first = exc.errors()[0]
         location = ".".join(str(part) for part in first.get("loc", ())) or "settings"
-        raise ValueError(
-            f"{scope} {entry_id!r} ({kind}): settings.{location}: {first.get('msg')}"
-        ) from exc
+        raise ValueError(f"{what}: settings.{location}: {first.get('msg')}") from exc
 
 
 # -- availability --------------------------------------------------------------

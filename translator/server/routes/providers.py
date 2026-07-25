@@ -17,7 +17,7 @@ from ...engines import engine_settings_model, provider_settings_model
 from ...errors import ApiError
 from ..deps import StoreDep
 from ..editing import apply_edit, merge_patch
-from ..secrets import redact_provider, resolve_provider_secrets
+from ..secrets import redact_provider, resolve_entry_secrets
 
 router = APIRouter(tags=["providers"])
 
@@ -34,7 +34,7 @@ async def create_provider(payload: ProviderConfig, store: StoreDep) -> ProviderC
     if store.config.provider(payload.id) is not None:
         raise ApiError(409, "provider_exists", f"provider {payload.id!r} exists")
     # A new provider has no stored secrets, so placeholders are dropped.
-    entry = resolve_provider_secrets(payload.model_dump(), None)
+    entry = resolve_entry_secrets(payload.model_dump(), None)
     new_config = await apply_edit(store, lambda data: data["providers"].append(entry))
     created = new_config.provider(payload.id)
     assert created is not None
@@ -49,7 +49,7 @@ async def update_provider(
     if stored is None:
         raise ApiError(404, "not_found", f"unknown provider {provider_id!r}")
     # Placeholder values mean "keep the stored secret" (see secrets module).
-    changes = resolve_provider_secrets(payload.model_dump(exclude_unset=True), stored)
+    changes = resolve_entry_secrets(payload.model_dump(exclude_unset=True), stored)
     # Switching kind swaps in a different settings model — for the account and
     # for every engine on it, since an engine's model comes from its provider's
     # kind. Only what the new models declare can survive; the old kind's

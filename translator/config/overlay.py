@@ -19,6 +19,7 @@ leave no way to remove a key a default had set.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import BaseModel
@@ -56,59 +57,42 @@ def _merge_entry(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
-def _merge_providers(
-    defaults: dict[str, Any], overlay: dict[str, Any]
+def _merge_section(
+    defaults: dict[str, Any],
+    overlay: dict[str, Any],
+    section: str,
+    self_standing: str,
 ) -> list[dict[str, Any]]:
-    removed = set(overlay.get("removed_providers") or [])
-    patches = _by_id(overlay.get("providers"))
+    """Merge one ``providers``/``engines`` section: patch the defaults by id,
+    then append the overlay-only entries.
 
+    An overlay-only entry is either a self-standing one — recognized by
+    carrying ``self_standing`` (a provider declares its ``kind``, an engine its
+    ``provider``) — or a sparse patch whose default has since been removed,
+    leaving nothing to patch. Drop the latter rather than failing the whole
+    config to load.
+    """
+    removed = set(overlay.get(f"removed_{section}") or [])
+    patches = _by_id(overlay.get(section))
     merged: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for base in defaults.get("providers") or []:
-        pid = base["id"]
-        if pid in removed:
+    for base in defaults.get(section) or []:
+        # Popping leaves `patches` holding exactly the overlay-only entries.
+        patch = patches.pop(base["id"], {})
+        if base["id"] not in removed:
+            merged.append(_merge_entry(base, patch))
+    for entry_id, entry in patches.items():
+        if entry_id in removed:
             continue
-        merged.append(_merge_entry(base, patches.get(pid, {})))
-        seen.add(pid)
-    # An overlay-only provider is either a self-standing custom entry, which
-    # declares its ``kind``, or a sparse patch whose default has since been
-    # removed — leaving nothing to patch. Drop the latter rather than failing
-    # the whole config to load. This mirrors the rule engines already live
-    # under below, where a patch with no surviving provider is dropped.
-    for pid, entry in patches.items():
-        if pid in seen or pid in removed:
-            continue
-        if "kind" not in entry:
+        if self_standing not in entry:
             logger.warning(
-                "dropping provider %r: patch with no matching default"
+                "dropping %s %r: patch with no matching default"
                 " (stale overlay for a removed default?)",
-                pid,
+                section[:-1],
+                entry_id,
             )
             continue
         merged.append(entry)
-        seen.add(pid)
     return merged
-
-
-def _merge_engines(
-    defaults: dict[str, Any], overlay: dict[str, Any], provider_ids: set[str]
-) -> list[dict[str, Any]]:
-    removed = set(overlay.get("removed_engines") or [])
-    patches = _by_id(overlay.get("engines"))
-
-    merged: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for base in defaults.get("engines") or []:
-        eid = base["id"]
-        if eid in removed:
-            continue
-        merged.append(_merge_entry(base, patches.get(eid, {})))
-        seen.add(eid)
-    for eid, entry in patches.items():
-        if eid not in seen and eid not in removed:
-            merged.append(entry)
-            seen.add(eid)
-    return [e for e in merged if e.get("provider") in provider_ids]
 
 
 def apply_overlay(defaults: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
@@ -120,8 +104,13 @@ def apply_overlay(defaults: dict[str, Any], overlay: dict[str, Any]) -> dict[str
     default lane when the overlay omits them, then are pruned to engines that
     survived the merge.
     """
-    providers = _merge_providers(defaults, overlay)
-    engines = _merge_engines(defaults, overlay, {p["id"] for p in providers})
+    providers = _merge_section(defaults, overlay, "providers", "kind")
+    provider_ids = {p["id"] for p in providers}
+    engines = [
+        e
+        for e in _merge_section(defaults, overlay, "engines", "provider")
+        if e.get("provider") in provider_ids  # a removed provider takes its engines
+    ]
     engine_ids = {e["id"] for e in engines}
 
     overlay_routing = overlay.get("routing") or {}
@@ -176,62 +165,55 @@ def _diff_entry(current: BaseModel, base: BaseModel) -> dict[str, Any]:
     return diff
 
 
-def _custom(model: BaseModel) -> dict[str, Any]:
-    """A self-standing entry, written in full minus inert defaults."""
-    return model.model_dump(mode="json", exclude_defaults=True, exclude_none=True)
+def _custom(model: BaseModel, keep: str | None) -> dict[str, Any]:
+    """A self-standing entry, written in full minus inert defaults.
 
-
-def _custom_provider(provider: BaseModel) -> dict[str, Any]:
-    """A custom provider always keeps its ``kind``.
-
-    ``kind`` has a default, so ``exclude_defaults`` would strip it from an
-    openai provider — and its presence is exactly what tells the merge this is
-    a self-standing entry rather than a patch for a vanished default.
+    ``keep`` forces one field back in: a provider's ``kind`` has a default, so
+    ``exclude_defaults`` would strip it from an openai provider — and its
+    presence is exactly what tells the merge this is a self-standing entry
+    rather than a patch for a vanished default.
     """
-    entry = _custom(provider)
-    entry["kind"] = provider.model_dump(mode="json")["kind"]
+    entry = model.model_dump(mode="json", exclude_defaults=True, exclude_none=True)
+    if keep is not None:
+        entry[keep] = model.model_dump(mode="json")[keep]
     return entry
+
+
+def _section_overlay(
+    section: str,
+    current: Sequence[Any],
+    defaults: Sequence[Any],
+    keep: str | None = None,
+) -> dict[str, Any]:
+    """The sparse form of one section: a diff per changed default, a full entry
+    per custom one, nothing for a default left untouched, and the ids of the
+    defaults this config dropped."""
+    by_id = {entry.id: entry for entry in defaults}
+    live = {entry.id for entry in current}
+    diffs: list[dict[str, Any]] = []
+    for entry in current:
+        base = by_id.get(entry.id)
+        if base is None:
+            diffs.append(_custom(entry, keep))
+            continue
+        diff = _diff_entry(entry, base)
+        if len(diff) > 1:  # more than just the id — something changed
+            diffs.append(diff)
+    out: dict[str, Any] = {section: diffs} if diffs else {}
+    removed = [entry_id for entry_id in by_id if entry_id not in live]
+    if removed:
+        out[f"removed_{section}"] = removed
+    return out
 
 
 def build_overlay(config: AppConfig) -> dict[str, Any]:
     """The sparse overlay for ``config`` relative to the built-in defaults:
     only changed/custom entries, derived removals, and non-default routing."""
     defaults = AppConfig.model_validate(DEFAULT_CONFIG)
-    default_providers = {p.id: p for p in defaults.providers}
-    default_engines = {e.id: e for e in defaults.engines}
-    overlay: dict[str, Any] = {}
-
-    provider_diffs: list[dict[str, Any]] = []
-    for provider in config.providers:
-        base = default_providers.get(provider.id)
-        if base is None:
-            provider_diffs.append(_custom_provider(provider))
-        else:
-            diff = _diff_entry(provider, base)
-            if len(diff) > 1:  # more than just the id — something changed
-                provider_diffs.append(diff)
-    if provider_diffs:
-        overlay["providers"] = provider_diffs
-    removed_providers = [
-        pid for pid in default_providers if config.provider(pid) is None
-    ]
-    if removed_providers:
-        overlay["removed_providers"] = removed_providers
-
-    engine_diffs: list[dict[str, Any]] = []
-    for engine in config.engines:
-        engine_base = default_engines.get(engine.id)
-        if engine_base is None:
-            engine_diffs.append(_custom(engine))
-        else:
-            diff = _diff_entry(engine, engine_base)
-            if len(diff) > 1:
-                engine_diffs.append(diff)
-    if engine_diffs:
-        overlay["engines"] = engine_diffs
-    removed_engines = [eid for eid in default_engines if config.engine(eid) is None]
-    if removed_engines:
-        overlay["removed_engines"] = removed_engines
+    overlay: dict[str, Any] = {
+        **_section_overlay("providers", config.providers, defaults.providers, "kind"),
+        **_section_overlay("engines", config.engines, defaults.engines),
+    }
 
     routing: dict[str, list[str]] = {}
     for lane in LANE_NAMES:

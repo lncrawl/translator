@@ -18,53 +18,47 @@ readable through ``GET /config``.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeVar
 
 from ..config import AppConfig, EngineConfig, EngineKind, ProviderConfig
-from ..engines import engine_settings_model, provider_settings_model, secret_keys
+from ..engines import (
+    Settings,
+    engine_settings_model,
+    provider_settings_model,
+    secret_keys,
+)
 
 SECRET_PLACEHOLDER = "__secret__"
 
+# The two config entries that carry a settings bag; both are handled alike here.
+Entry = TypeVar("Entry", ProviderConfig, EngineConfig)
 
-def _redact(
-    settings: dict[str, Any], secrets: set[str], declared: set[str]
-) -> dict[str, Any]:
-    return {
-        key: SECRET_PLACEHOLDER
-        if value and (key in secrets or key not in declared)
-        else value
-        for key, value in settings.items()
-    }
+
+def _redact(entry: Entry, model: type[Settings]) -> Entry:
+    """A copy of ``entry`` with every set secret in its settings replaced by
+    the placeholder. Unset secrets stay as-is so clients can still tell
+    "configured" from "missing"."""
+    secrets = secret_keys(model)
+    declared = set(model.model_fields)
+    return entry.model_copy(
+        update={
+            "settings": {
+                key: SECRET_PLACEHOLDER
+                if value and (key in secrets or key not in declared)
+                else value
+                for key, value in entry.settings.items()
+            }
+        }
+    )
 
 
 def redact_provider(provider: ProviderConfig) -> ProviderConfig:
-    """A copy of ``provider`` with every set secret replaced by the
-    placeholder. Unset secrets stay as-is so clients can still tell
-    "configured" from "missing"."""
-    model = provider_settings_model(provider.kind)
-    return provider.model_copy(
-        update={
-            "settings": _redact(
-                provider.settings,
-                secret_keys(model),
-                set(model.model_fields),
-            )
-        }
-    )
+    return _redact(provider, provider_settings_model(provider.kind))
 
 
 def redact_engine(engine: EngineConfig, kind: EngineKind) -> EngineConfig:
-    """The same for an engine's settings, which may also declare secrets."""
-    model = engine_settings_model(kind)
-    return engine.model_copy(
-        update={
-            "settings": _redact(
-                engine.settings,
-                secret_keys(model),
-                set(model.model_fields),
-            )
-        }
-    )
+    """``kind`` is the *provider's* — an engine's settings model follows it."""
+    return _redact(engine, engine_settings_model(kind))
 
 
 def redact_config(config: AppConfig) -> AppConfig:
@@ -81,8 +75,8 @@ def redact_config(config: AppConfig) -> AppConfig:
     )
 
 
-def resolve_settings_secrets(
-    entry: dict[str, Any], stored: dict[str, Any] | None
+def resolve_entry_secrets(
+    entry: dict[str, Any], stored: Entry | None
 ) -> dict[str, Any]:
     """Resolve placeholder values in an incoming entry against what is stored:
     placeholder means "keep what is stored". A placeholder with nothing behind
@@ -98,10 +92,11 @@ def resolve_settings_secrets(
     settings = resolved.get("settings")
     if not isinstance(settings, dict):
         return resolved
+    saved = stored.settings if stored else {}
     kept: dict[str, Any] = {}
     for key, value in settings.items():
         if value == SECRET_PLACEHOLDER:
-            value = (stored or {}).get(key)
+            value = saved.get(key)
             if value is None:
                 continue
         kept[key] = value
@@ -109,30 +104,18 @@ def resolve_settings_secrets(
     return resolved
 
 
-def resolve_provider_secrets(
-    entry: dict[str, Any], stored: ProviderConfig | None
-) -> dict[str, Any]:
-    return resolve_settings_secrets(entry, stored.settings if stored else None)
-
-
-def resolve_engine_secrets(
-    entry: dict[str, Any], stored: EngineConfig | None
-) -> dict[str, Any]:
-    return resolve_settings_secrets(entry, stored.settings if stored else None)
-
-
 def resolve_config_secrets(candidate: AppConfig, current: AppConfig) -> AppConfig:
     """Resolve placeholders throughout an incoming full config (matching
     entries by id against ``current``)."""
     providers = [
         ProviderConfig.model_validate(
-            resolve_provider_secrets(p.model_dump(), current.provider(p.id))
+            resolve_entry_secrets(p.model_dump(), current.provider(p.id))
         )
         for p in candidate.providers
     ]
     engines = [
         EngineConfig.model_validate(
-            resolve_engine_secrets(e.model_dump(), current.engine(e.id))
+            resolve_entry_secrets(e.model_dump(), current.engine(e.id))
         )
         for e in candidate.engines
     ]

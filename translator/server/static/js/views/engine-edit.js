@@ -1,6 +1,6 @@
 import { el, toast, busy, routeParts, goBack, dropdown } from "../ui.js";
 import { store, mutate, kindSchema } from "../store.js";
-import { schemaForm } from "../schema-form.js";
+import { schemaForm, splitForm } from "../schema-form.js";
 
 export const id = "engine-edit";
 export const title = "Engine";
@@ -109,25 +109,18 @@ function render() {
   providerSelect.value =
     engine?.provider || params.get("provider") || providerSelect.value;
 
-  const onChange = () => {};
   const settingsBox = el("div", {});
-  let entry = null; // the engine's own fields (enabled)
   let own = null; // settings this kind adds
   let shared = null; // the EngineSettings base every kind inherits
 
-  const sharedNames = Object.keys(store.schema.engine?.properties || {});
-
-  function providerKind() {
-    return store.config.providers.find((p) => p.id === providerSelect.value)
-      ?.kind;
+  function selectedProvider() {
+    return store.config.providers.find((p) => p.id === providerSelect.value);
   }
 
   // An empty override box shows what it would inherit: the provider's own
   // override where it has one, otherwise the global policy.
   function inheritedPolicy() {
-    const fromProvider =
-      store.config.providers.find((p) => p.id === providerSelect.value)
-        ?.settings?.failure_policy || {};
+    const fromProvider = selectedProvider()?.settings?.failure_policy || {};
     return {
       ...store.config.failure_policy,
       ...Object.fromEntries(
@@ -137,26 +130,20 @@ function render() {
   }
 
   function renderSettings() {
-    const schema = kindSchema(providerKind())?.engine_settings;
-    const values = engine?.settings ?? {};
-    own = schemaForm(schema, values, { onChange, omit: sharedNames });
-    shared = schemaForm(schema, values, {
-      onChange,
-      omit: Object.keys(schema?.properties || {}).filter(
-        (n) => !sharedNames.includes(n),
-      ),
-      placeholders: { failure_policy: inheritedPolicy() },
-    });
+    ({ own, shared } = splitForm(
+      kindSchema(selectedProvider()?.kind)?.engine_settings,
+      store.schema.engine,
+      engine?.settings ?? {},
+      { placeholders: { failure_policy: inheritedPolicy() } },
+    ));
     settingsBox.replaceChildren(
-      ...[
-        ...own.rows,
-        el("h3", { style: "margin:18px 0 8px" }, "Limits and routing"),
-        ...shared.rows,
-      ].filter(Boolean),
+      ...own.rows,
+      el("h3", { style: "margin:18px 0 8px" }, "Limits and routing"),
+      ...shared.rows,
     );
   }
 
-  entry = schemaForm(store.schema.engine_entry, engine ?? {}, { onChange });
+  const entry = schemaForm(store.schema.engine_entry, engine ?? {});
   renderSettings();
 
   const collect = () =>

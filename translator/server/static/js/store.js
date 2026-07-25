@@ -2,8 +2,7 @@ import { api } from "./api.js";
 
 // Sentinel for stored secrets: responses replace every saved secret with this
 // value, and sending it back means "keep the stored secret". Secrets are never
-// readable through the API. The server confirms it in GET /schema; this is the
-// value used until that first fetch lands.
+// readable through the API. Must match server/secrets.py.
 export const SECRET_PLACEHOLDER = "__secret__";
 
 // GET /schema, generated from the server's own models. Forms render from it,
